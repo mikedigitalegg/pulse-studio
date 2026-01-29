@@ -1,0 +1,1263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pulse Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        --bg-app: #0f1115;
+        --bg-sidebar: #16181d;
+        --bg-card: #1e2128;
+        --bg-input: #121418;
+        --border: #2e323a;
+        --accent: #6366f1; /* Indigo */
+        --accent-hover: #4f46e5;
+        --text-main: #e2e8f0;
+        --text-muted: #94a3b8;
+        --success: #10b981;
+        --danger: #ef4444;
+        
+        --font-ui: 'Inter', sans-serif;
+        --font-mono: 'JetBrains Mono', monospace;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        font-family: var(--font-ui);
+        background-color: var(--bg-app);
+        color: var(--text-main);
+        height: 100vh;
+        display: flex;
+        overflow: hidden;
+      }
+
+      /* Sidebar */
+      .sidebar {
+        width: 260px;
+        background-color: var(--bg-sidebar);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        padding: 20px;
+        flex-shrink: 0;
+      }
+
+      .logo {
+        font-size: 20px;
+        font-weight: 700;
+        color: white;
+        margin-bottom: 30px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .logo span { color: var(--accent); }
+
+      .nav-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        flex: 1;
+      }
+
+      .nav-item {
+        padding: 10px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        color: var(--text-muted);
+        font-weight: 500;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .nav-item:hover {
+        background-color: rgba(255, 255, 255, 0.03);
+        color: var(--text-main);
+      }
+
+      .nav-item.active {
+        background-color: rgba(99, 102, 241, 0.1);
+        color: var(--accent);
+      }
+
+      /* Transport in Sidebar */
+      .transport-panel {
+        margin-top: auto;
+        padding-top: 20px;
+        border-top: 1px solid var(--border);
+      }
+      
+      .transport-controls {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+
+      .transport-btn {
+        flex: 1;
+        background-color: var(--bg-card);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 8px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+        transition: all 0.1s;
+      }
+      
+      .transport-btn.play { background-color: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); color: var(--success); }
+      .transport-btn.stop { background-color: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); color: var(--danger); }
+      .transport-btn:active { transform: translateY(1px); }
+
+      .tempo-control {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        background: var(--bg-input);
+        padding: 4px 8px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+      }
+      
+      .tempo-control input {
+        background: transparent;
+        border: none;
+        color: var(--text-main);
+        width: 100%;
+        font-family: var(--font-mono);
+        font-size: 14px;
+        text-align: center;
+      }
+      
+      .tempo-control span {
+        font-size: 11px;
+        color: var(--text-muted);
+        font-weight: 600;
+      }
+
+      /* Main Content */
+      .main-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 30px 40px;
+      }
+
+      .view-section {
+        display: none;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding-bottom: 60px;
+      }
+      .view-section.active { display: block; }
+
+      h2 { font-size: 24px; font-weight: 600; margin: 0 0 20px; color: white; }
+      h3 { font-size: 18px; font-weight: 500; margin: 24px 0 16px; color: var(--text-main); }
+      h4 { font-size: 14px; font-weight: 600; margin: 0 0 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+      .card {
+        background-color: var(--bg-card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+      }
+
+      .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+      .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+
+      /* Controls */
+      label.control-label {
+        display: block;
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 6px;
+      }
+
+      input[type="text"], input[type="number"], select {
+        width: 100%;
+        background-color: var(--bg-input);
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-family: var(--font-ui);
+        font-size: 14px;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      
+      input:focus, select:focus { border-color: var(--accent); }
+
+      button.primary {
+        background-color: var(--accent);
+        color: white;
+        border: none;
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-weight: 500;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+      }
+      button.primary:hover { background-color: var(--accent-hover); }
+      button.primary:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      button.secondary {
+        background-color: transparent;
+        border: 1px solid var(--border);
+        color: var(--text-main);
+        padding: 10px 16px;
+        border-radius: 8px;
+        font-weight: 500;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+      }
+      button.secondary:hover { background-color: rgba(255,255,255,0.05); border-color: #4b5563; }
+
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+      
+      /* Sequencers */
+      .seq-container {
+        margin-top: 10px;
+        background: var(--bg-input);
+        border-radius: 8px;
+        padding: 16px;
+        border: 1px solid var(--border);
+      }
+      
+      .seq-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
+      .seq-lane { 
+        width: 60px; 
+        font-size: 11px; 
+        color: var(--text-muted); 
+        text-transform: uppercase; 
+        text-align: right; 
+        padding-right: 8px; 
+      }
+      .step {
+        width: 24px; height: 32px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 4px;
+        border: 1px solid rgba(255,255,255,0.05);
+      }
+      .step.beat { border-left-color: rgba(255,255,255,0.2); }
+      .step.on { box-shadow: 0 0 10px rgba(99, 102, 241, 0.3); }
+
+      /* Knobs */
+      .knob-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
+      .knob-card {
+        background: var(--bg-input);
+        padding: 12px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        text-align: center;
+      }
+      .knob-card label { display: block; font-size: 11px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; }
+      input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+
+      /* Logs */
+      pre#log, pre#statusDetails, pre#pairApplied {
+        background-color: var(--bg-input);
+        padding: 12px;
+        border-radius: 8px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+        max-height: 200px;
+        overflow-y: auto;
+      }
+
+      /* Tabs inside cards */
+      .sub-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; padding-bottom: 8px; }
+      .sub-tab {
+        padding: 6px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 13px;
+        color: var(--text-muted);
+        background: transparent;
+        border: none;
+      }
+      .sub-tab.active { background: var(--bg-input); color: var(--text-main); font-weight: 500; }
+      
+      .sub-panel { display: none; }
+      .sub-panel.active { display: block; }
+    </style>
+  </head>
+  <body>
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="logo">
+        <span>●</span> Pulse Studio
+      </div>
+      
+      <div class="nav-menu">
+        <div class="nav-item active" onclick="switchView('dashboard')">
+          <span>Dashboard</span>
+        </div>
+        <div class="nav-item" onclick="switchView('compose')">
+          <span>Composition</span>
+        </div>
+        <div class="nav-item" onclick="switchView('performance')">
+          <span>Performance</span>
+        </div>
+        <div class="nav-item" onclick="switchView('system')">
+          <span>System</span>
+        </div>
+      </div>
+
+      <div class="transport-panel">
+        <div class="transport-controls">
+          <button id="play" class="transport-btn play">PLAY</button>
+          <button id="stop" class="transport-btn stop">STOP</button>
+        </div>
+        <div class="tempo-control">
+          <span>BPM</span>
+          <input id="tempo" type="number" step="0.1" value="140" />
+          <button id="setTempo" class="secondary" style="padding: 2px 6px; font-size: 10px;">SET</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      
+      <!-- DASHBOARD VIEW -->
+      <div id="view-dashboard" class="view-section active">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2>Live Overview</h2>
+          <button id="refreshStatus" class="secondary" style="font-size: 12px;">Refresh Status</button>
+        </div>
+        
+        <div class="card">
+           <div class="sub-tabs">
+             <button class="sub-tab active" onclick="switchSubTab(this, 'tab-drums')">Drums</button>
+             <button class="sub-tab" onclick="switchSubTab(this, 'tab-bass')">Bass</button>
+             <button class="sub-tab" onclick="switchSubTab(this, 'tab-perc')">Perc</button>
+             <button class="sub-tab" onclick="switchSubTab(this, 'tab-stabs')">Stabs</button>
+             <button class="sub-tab" onclick="switchSubTab(this, 'tab-fx')">FX</button>
+           </div>
+
+           <div id="tab-drums" class="sub-panel active">
+             <div class="seq-container">
+               <div id="topDrumsMeta" style="margin-bottom: 10px; font-size: 12px; color: var(--text-muted);"></div>
+               <div id="topDrumsSeq"></div>
+             </div>
+           </div>
+           <div id="tab-bass" class="sub-panel">
+             <div class="seq-container">
+               <div id="topBassMeta" style="margin-bottom: 10px; font-size: 12px; color: var(--text-muted);"></div>
+               <div id="topBassSeq"></div>
+             </div>
+           </div>
+           <div id="tab-perc" class="sub-panel">
+             <div class="seq-container">
+                <div id="topPercMeta" style="margin-bottom: 10px; font-size: 12px; color: var(--text-muted);"></div>
+                <div id="topPercSeq"></div>
+             </div>
+           </div>
+           <div id="tab-stabs" class="sub-panel">
+             <div class="seq-container">
+                <div id="topStabsMeta" style="margin-bottom: 10px; font-size: 12px; color: var(--text-muted);"></div>
+                <div id="topStabsSeq"></div>
+             </div>
+           </div>
+           <div id="tab-fx" class="sub-panel">
+             <div class="seq-container">
+                <div id="topFxMeta" style="margin-bottom: 10px; font-size: 12px; color: var(--text-muted);"></div>
+                <div id="topFxSeq"></div>
+             </div>
+           </div>
+        </div>
+      </div>
+
+      <!-- COMPOSITION VIEW -->
+      <div id="view-compose" class="view-section">
+        <h2>Composition Tools</h2>
+
+        <!-- Pair Generator -->
+        <div class="card">
+          <h4>Smart Pair Generator</h4>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Create complementary Drum and Bass patterns in one go.</p>
+          
+          <div class="grid-3" style="margin-bottom: 16px;">
+            <div>
+              <label class="control-label">Style</label>
+              <select id="pairStyle">
+                <option value="techno">Techno</option>
+                <option value="acid_techno">Acid Techno</option>
+                <option value="house">House</option>
+                <option value="dnb">DnB</option>
+                <option value="breakbeat">Breakbeat</option>
+                <option value="garage">Garage</option>
+                <option value="tribal">Tribal</option>
+                <option value="psytrance">Psytrance</option>
+              </select>
+            </div>
+            <div>
+               <label class="control-label">Bars</label>
+               <input id="pairBars" type="number" min="1" max="4" value="1">
+            </div>
+            <div>
+              <label class="control-label">Prompt (Optional)</label>
+              <input id="pairPrompt" type="text" placeholder="e.g. driving, minimal...">
+            </div>
+          </div>
+
+          <div class="grid-2" style="margin-bottom: 16px;">
+            <div>
+               <label class="control-label">Drum Slot (Track 0)</label>
+               <input id="pairDrumSlot" type="number" min="0" value="0">
+            </div>
+            <div>
+               <label class="control-label">Bass Slot (Track 1)</label>
+               <input id="pairBassSlot" type="number" min="0" value="0">
+            </div>
+          </div>
+          
+          <div class="row" style="margin-bottom: 16px;">
+             <label style="font-size: 13px;"><input type="checkbox" id="pairIncludeDrums" checked> Drums</label>
+             <label style="font-size: 13px;"><input type="checkbox" id="pairIncludeBass" checked> Bass</label>
+             <label style="font-size: 13px;"><input type="checkbox" id="pairIncludePerc" checked> Perc</label>
+             <label style="font-size: 13px;"><input type="checkbox" id="pairIncludeStabs" checked> Stabs</label>
+             <label style="font-size: 13px;"><input type="checkbox" id="pairIncludeFx"> FX</label>
+             <label style="font-size: 13px; margin-left: 10px;"><input type="checkbox" id="pairLinkSlots" checked> Link Slots</label>
+          </div>
+
+          <div class="row">
+            <button id="pairGenerate" class="secondary" data-busy-text="Generating...">Generate Only</button>
+            <button id="pairGenerateAndLaunch" class="primary" data-busy-text="Generating...">Generate & Launch</button>
+            <button id="pairSave" class="secondary" style="margin-left: auto;">Save JSON</button>
+            <button id="pairLoad" class="secondary">Load JSON</button>
+            <input id="pairLoadFile" type="file" accept="application/json" style="display:none" />
+          </div>
+          
+          <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
+             <div id="pairCommentary" style="font-size: 13px; color: var(--text-muted);"></div>
+             <pre id="pairApplied" style="display:none"></pre>
+          </div>
+        </div>
+
+        <!-- Full Track Generator -->
+        <div class="card">
+          <h4>Full Track Arranger</h4>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Generate a complete set of scenes (Intro, Main, Break, Drop, Outro).</p>
+          
+          <div class="grid-3" style="margin-bottom: 16px;">
+            <div>
+               <label class="control-label">Start Slot</label>
+               <input id="trackStartSlot" type="number" min="0" value="0">
+            </div>
+             <div>
+               <label class="control-label">Bars Per Scene</label>
+               <input id="trackBarsPerScene" type="number" min="1" max="4" value="1">
+            </div>
+          </div>
+          
+          <div class="row" style="margin-bottom: 16px;">
+            <button id="trackGenerate" class="primary" data-busy-text="Generating...">Generate Full Track</button>
+            <button id="trackAutoPlay" class="secondary">Auto-Play Arrangement</button>
+            <button id="trackAutoStop" class="secondary">Stop Auto-Play</button>
+          </div>
+          
+          <div class="row" style="margin-bottom: 16px;">
+             <button id="trackSave" class="secondary">Save Track JSON</button>
+             <button id="trackLoad" class="secondary">Load Track JSON</button>
+             <input id="trackLoadFile" type="file" accept="application/json" style="display:none" />
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div>
+               <label class="control-label">Generated Scenes</label>
+               <div id="trackScenes" style="font-size: 13px;"></div>
+            </div>
+            <div>
+               <label class="control-label">Suggested Arrangement</label>
+               <div id="trackArrangement" style="font-size: 13px; color: var(--text-muted);"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Individual Generators (Accordion Style) -->
+        <h3>Individual Tools</h3>
+        
+        <details class="card">
+           <summary style="cursor: pointer; font-weight: 600; padding-bottom: 4px;">Bass Generator</summary>
+           <div style="padding-top: 16px;">
+              <div class="grid-3" style="margin-bottom: 16px;">
+                 <select id="bassStyle"><option value="techno">Techno</option><option value="house">House</option><option value="dnb">DnB</option><option value="acid_techno">Acid</option></select>
+                 <input id="bassBars" type="number" min="1" max="4" value="1" placeholder="Bars">
+                 <input id="bassPrompt" type="text" placeholder="Prompt...">
+              </div>
+              <div class="grid-3" style="margin-bottom: 16px;">
+                 <input id="bassTrack" type="number" value="1" placeholder="Track">
+                 <input id="bassSlot" type="number" value="0" placeholder="Slot">
+              </div>
+              <div class="row">
+                 <button id="bassGenerate" class="secondary">Generate</button>
+                 <button id="bassGenerateAndLaunch" class="primary">Generate & Launch</button>
+              </div>
+              <div style="margin-top: 16px;">
+                 <div id="bassMeta" class="control-label"></div>
+                 <div id="bassSeq" class="seq-container" style="padding: 10px;"></div>
+                 <div class="row" style="margin-top: 12px;">
+                    <input id="bassTranspose" type="number" value="0" style="width: 80px;" placeholder="Transp">
+                    <input id="bassVelScale" type="range" min="0" max="2" step="0.05" value="1">
+                    <button id="applyBassTweaks" class="secondary">Apply Tweaks</button>
+                 </div>
+              </div>
+           </div>
+        </details>
+        
+        <details class="card" style="margin-top: 12px;">
+           <summary style="cursor: pointer; font-weight: 600; padding-bottom: 4px;">Drum Clip Generator</summary>
+           <div style="padding-top: 16px;">
+               <div class="grid-3" style="margin-bottom: 16px;">
+                 <select id="aiStyle"><option value="techno">Techno</option><option value="house">House</option><option value="dnb">DnB</option></select>
+                 <input id="aiBars" type="number" min="1" max="4" value="1">
+                 <input id="aiSlot" type="number" min="0" value="0">
+               </div>
+               <div class="row" style="margin-bottom: 16px;">
+                 <input id="aiPrompt" type="text" placeholder="Prompt..." style="flex: 1;">
+                 <button id="aiGenerate" class="secondary">Generate</button>
+                 <button id="aiGenerateAndLaunch" class="primary">Gen & Launch</button>
+               </div>
+               <div class="row">
+                 <label class="control-label">Velocity Scale</label>
+                 <input id="drumVelScale" type="range" min="0" max="2" step="0.05" value="1">
+                 <button id="applyDrumTweaks" class="secondary">Apply</button>
+               </div>
+           </div>
+        </details>
+        
+        <details class="card" style="margin-top: 12px;">
+           <summary style="cursor: pointer; font-weight: 600; padding-bottom: 4px;">Perc / Stabs / FX</summary>
+           <div style="padding-top: 16px;">
+              <p class="control-label">Use these to fill out the track layers.</p>
+              
+              <div style="border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
+                 <h4>Percussion</h4>
+                 <div class="row">
+                    <select id="percStyle" style="width: auto;"><option value="techno">Techno</option><option value="house">House</option></select>
+                    <input id="percBars" type="number" value="1" style="width: 60px;">
+                    <input id="percTrack" type="number" value="2" style="width: 60px;">
+                    <input id="percSlot" type="number" value="0" style="width: 60px;">
+                    <button id="percGenerate" class="secondary">Gen</button>
+                    <button id="percGenerateAndLaunch" class="primary">Launch</button>
+                 </div>
+                 <div id="percSeq" style="margin-top: 8px;"></div>
+              </div>
+
+              <div style="border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
+                 <h4>Stabs</h4>
+                 <div class="row">
+                    <select id="stabsStyle" style="width: auto;"><option value="techno">Techno</option><option value="house">House</option></select>
+                    <input id="stabsBars" type="number" value="1" style="width: 60px;">
+                    <input id="stabsTrack" type="number" value="3" style="width: 60px;">
+                    <input id="stabsSlot" type="number" value="0" style="width: 60px;">
+                    <button id="stabsGenerate" class="secondary">Gen</button>
+                    <button id="stabsGenerateAndLaunch" class="primary">Launch</button>
+                 </div>
+                 <div id="stabsSeq" style="margin-top: 8px;"></div>
+              </div>
+
+              <div>
+                 <h4>FX</h4>
+                 <div class="row">
+                    <select id="fxStyle" style="width: auto;"><option value="techno">Techno</option><option value="house">House</option></select>
+                    <input id="fxBars" type="number" value="1" style="width: 60px;">
+                    <input id="fxTrack" type="number" value="4" style="width: 60px;">
+                    <input id="fxSlot" type="number" value="0" style="width: 60px;">
+                    <button id="fxGenerate" class="secondary">Gen</button>
+                    <button id="fxGenerateAndLaunch" class="primary">Launch</button>
+                 </div>
+                 <div id="fxSeq" style="margin-top: 8px;"></div>
+              </div>
+           </div>
+        </details>
+
+      </div>
+
+      <!-- PERFORMANCE VIEW -->
+      <div id="view-performance" class="view-section">
+        <h2>Performance Control</h2>
+        
+        <div class="card">
+          <h4>Scene Master</h4>
+          <p class="control-label">Launch entire rows (Drums + Bass + Perc + FX).</p>
+          <div class="grid-3" style="margin-top: 16px;">
+            <button class="scene-btn secondary" data-scene="0">Scene 1 (Intro)</button>
+            <button class="scene-btn secondary" data-scene="1">Scene 2</button>
+            <button class="scene-btn secondary" data-scene="2">Scene 3</button>
+            <button class="scene-btn secondary" data-scene="3">Scene 4 (Break)</button>
+            <button class="scene-btn secondary" data-scene="4">Scene 5 (Drop)</button>
+            <button class="scene-btn secondary" data-scene="5">Scene 6</button>
+            <button class="scene-btn secondary" data-scene="6">Scene 7</button>
+            <button class="scene-btn secondary" data-scene="7">Scene 8 (Outro)</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>Style Pads (Instant Launch)</h4>
+          <p class="control-label">Launches clips 0-5 on Track 0.</p>
+          <div class="grid-3" style="margin-top: 16px;">
+            <button class="style secondary" data-style="techno">Techno</button>
+            <button class="style secondary" data-style="house">House</button>
+            <button class="style secondary" data-style="dnb">DnB</button>
+            <button class="style secondary" data-style="breakbeat">Breakbeat</button>
+            <button class="style secondary" data-style="garage">Garage</button>
+            <button class="style secondary" data-style="tribal">Tribal</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>Macro Knobs</h4>
+          
+          <h5 style="color: var(--accent); margin: 16px 0 10px;">Drums FX (Track 0)</h5>
+          <div class="knob-grid">
+            <div class="knob-card"><label>Filter</label><input type="range" min="0" max="1" step="0.01" value="0.5" data-target="drums" data-knob="FILTER" /></div>
+            <div class="knob-card"><label>Resonance</label><input type="range" min="0" max="1" step="0.01" value="0.3" data-target="drums" data-knob="RESONANCE" /></div>
+            <div class="knob-card"><label>Drive</label><input type="range" min="0" max="1" step="0.01" value="0.2" data-target="drums" data-knob="DRIVE" /></div>
+            <div class="knob-card"><label>Transient</label><input type="range" min="0" max="1" step="0.01" value="0.5" data-target="drums" data-knob="TRANSIENT" /></div>
+            <div class="knob-card"><label>Low Cut</label><input type="range" min="0" max="1" step="0.01" value="0.0" data-target="drums" data-knob="LOW_CUT" /></div>
+            <div class="knob-card"><label>Presence</label><input type="range" min="0" max="1" step="0.01" value="0.5" data-target="drums" data-knob="PRESENCE" /></div>
+            <div class="knob-card"><label>Space</label><input type="range" min="0" max="1" step="0.01" value="0.1" data-target="drums" data-knob="SPACE" /></div>
+            <div class="knob-card"><label>Hat Bright</label><input type="range" min="0" max="1" step="0.01" value="0.5" data-target="drums" data-knob="HAT_BRIGHT" /></div>
+          </div>
+          
+          <h5 style="color: var(--accent); margin: 24px 0 10px;">Bass Rack (Track 1)</h5>
+          <div class="knob-grid">
+            <div class="knob-card"><label>Cutoff</label><input type="range" min="0" max="1" step="0.01" value="0.35" data-target="bass" data-knob="CUTOFF" /></div>
+            <div class="knob-card"><label>Resonance</label><input type="range" min="0" max="1" step="0.01" value="0.55" data-target="bass" data-knob="RESONANCE" /></div>
+            <div class="knob-card"><label>Env Amount</label><input type="range" min="0" max="1" step="0.01" value="0.5" data-target="bass" data-knob="ENV_AMOUNT" /></div>
+            <div class="knob-card"><label>Decay</label><input type="range" min="0" max="1" step="0.01" value="0.4" data-target="bass" data-knob="DECAY" /></div>
+            <div class="knob-card"><label>Accent</label><input type="range" min="0" max="1" step="0.01" value="0.5" data-target="bass" data-knob="ACCENT" /></div>
+            <div class="knob-card"><label>Drive</label><input type="range" min="0" max="1" step="0.01" value="0.35" data-target="bass" data-knob="DRIVE" /></div>
+            <div class="knob-card"><label>Low EQ</label><input type="range" min="0" max="1" step="0.01" value="0.5" data-target="bass" data-knob="LOW_EQ" /></div>
+            <div class="knob-card"><label>Space</label><input type="range" min="0" max="1" step="0.01" value="0.1" data-target="bass" data-knob="SPACE" /></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SYSTEM VIEW -->
+      <div id="view-system" class="view-section">
+        <h2>System & Logs</h2>
+        
+        <div class="card">
+          <h4>Status</h4>
+          <div id="statusSummary" style="margin-bottom: 10px; color: var(--success); font-family: var(--font-mono);"></div>
+          <pre id="statusDetails"></pre>
+        </div>
+
+        <div class="card">
+          <h4>Event Log</h4>
+          <pre id="log"></pre>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Logic (Ported from volca_drum_v2.html) -->
+    <script>
+      const API_BASE = "http://127.0.0.1:8005";
+      const logEl = document.getElementById("log");
+
+      // --- Navigation Logic ---
+      function switchView(viewName) {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        document.getElementById(`view-${viewName}`).classList.add('active');
+        
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        // Find the nav item that called this (a bit hacky but works)
+        // Better: use direct reference if possible, but simple iteration works
+        const navItems = document.querySelectorAll('.nav-item');
+        if(viewName === 'dashboard') navItems[0].classList.add('active');
+        if(viewName === 'compose') navItems[1].classList.add('active');
+        if(viewName === 'performance') navItems[2].classList.add('active');
+        if(viewName === 'system') navItems[3].classList.add('active');
+      }
+
+      function switchSubTab(btn, tabId) {
+        const parent = btn.closest('.card');
+        parent.querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        parent.querySelectorAll('.sub-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+      }
+
+      // --- Core Functions ---
+      function log(msg) {
+        logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + logEl.textContent;
+      }
+
+      async function get(path) {
+        const res = await fetch(`${API_BASE}${path}`, { method: "GET" });
+        const text = await res.text();
+        if (!res.ok) throw new Error(text);
+        return text ? JSON.parse(text) : {};
+      }
+
+      async function post(path, body) {
+        const res = await fetch(`${API_BASE}${path}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: body ? JSON.stringify(body) : "{}",
+        });
+
+        const text = await res.text();
+        if (!res.ok) throw new Error(text);
+        return text ? JSON.parse(text) : {};
+      }
+
+      function setBusy(buttonEl, isBusy) {
+        if (!buttonEl) return;
+        if (!buttonEl.dataset.originalText) {
+          buttonEl.dataset.originalText = buttonEl.textContent;
+        }
+        const busyText = buttonEl.dataset.busyText || "Working...";
+        buttonEl.disabled = !!isBusy;
+        buttonEl.textContent = isBusy ? busyText : buttonEl.dataset.originalText;
+      }
+
+      // --- Rendering ---
+      function renderStatus(status) {
+        const summary = document.getElementById("statusSummary");
+        const details = document.getElementById("statusDetails");
+
+        if (!status || typeof status !== "object") {
+          summary.textContent = "No status.";
+          details.textContent = "";
+          return;
+        }
+
+        const ok = !!status.ok;
+        const listenerOk = status.listener ? !!status.listener.ok : false;
+        summary.textContent = `Server: ${ok ? 'OK' : 'Error'} | OSC: ${listenerOk ? 'OK' : 'Error'}`;
+        details.textContent = JSON.stringify(status, null, 2);
+      }
+
+      function velocityToColor(vel) {
+        const v = Math.max(0, Math.min(127, vel || 0));
+        if (v <= 0) return "rgba(255,255,255,0.05)";
+        const t = v / 127;
+        // Pulse Studio Blue/Purple Theme
+        const hue = 240 + (t * 40); // 240 (blue) -> 280 (purple)
+        const sat = 80;
+        const lit = 40 + t * 30;
+        const alpha = 0.4 + t * 0.6;
+        return `hsla(${hue}, ${sat}%, ${lit}%, ${alpha})`;
+      }
+
+      function laneHueFor(lane) {
+        const k = String(lane || "").toLowerCase();
+        if (k === "kick") return "hsla(220, 90%, 60%, 0.5)"; 
+        if (k === "snare" || k === "clap") return "hsla(280, 80%, 60%, 0.5)";
+        if (k === "ch" || k === "oh") return "hsla(180, 80%, 50%, 0.5)";
+        return "hsla(200, 50%, 50%, 0.4)";
+      }
+
+      function laneOrderFromPattern(pattern) {
+        const preferred = ["kick", "snare", "clap", "ch", "oh", "perc1", "perc2"];
+        const lanes = (pattern && pattern.lanes) ? Object.keys(pattern.lanes) : [];
+        const ordered = preferred.filter((k) => lanes.includes(k));
+        lanes.forEach((k) => {
+          if (!ordered.includes(k)) ordered.push(k);
+        });
+        return ordered;
+      }
+
+      function midiToNoteName(midi) {
+        const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+        const n = parseInt(midi, 10);
+        if (!Number.isFinite(n) || n <= 0) return "-";
+        const name = names[n % 12];
+        const oct = Math.floor(n / 12) - 1;
+        return `${name}${oct}`;
+      }
+
+      // --- Sequencer Renderers ---
+      // We will re-use the "Top" versions logic for the main dashboard display
+      
+      function renderTopDrumsSequencer(pattern, style, slot) {
+        const seq = document.getElementById("topDrumsSeq");
+        const meta = document.getElementById("topDrumsMeta");
+        if (!seq || !meta) return;
+
+        if (!pattern || !pattern.lanes) {
+          meta.textContent = "No pattern data";
+          seq.innerHTML = "";
+          return;
+        }
+
+        const bars = pattern.bars || 1;
+        const lanes = laneOrderFromPattern(pattern);
+        meta.textContent = `${style || 'Unknown Style'} | Slot ${slot} | ${bars} Bar(s)`;
+
+        const wrapper = document.createElement("div");
+        lanes.forEach((lane) => {
+          const row = document.createElement("div");
+          row.className = "seq-row";
+          
+          const label = document.createElement("div");
+          label.className = "seq-lane";
+          label.textContent = lane;
+          row.appendChild(label);
+
+          const steps = pattern.lanes[lane] || [];
+          for (let i = 0; i < Math.min(16, steps.length); i++) {
+            const vel = steps[i];
+            const cell = document.createElement("div");
+            cell.className = "step" + ((i % 4 === 0) ? " beat" : "") + (vel > 0 ? " on" : "");
+            cell.title = `Step ${i + 1}: ${vel}`;
+            cell.style.background = velocityToColor(vel);
+            row.appendChild(cell);
+          }
+          wrapper.appendChild(row);
+        });
+        seq.innerHTML = "";
+        seq.appendChild(wrapper);
+      }
+
+      function renderTopBassSequencer(bassline, style, track, slot) {
+        const meta = document.getElementById("topBassMeta");
+        const seq = document.getElementById("topBassSeq");
+        if (!meta || !seq) return;
+
+        if (!bassline || !bassline.steps) {
+          meta.textContent = "No bassline data";
+          seq.innerHTML = "";
+          return;
+        }
+
+        const bars = bassline.bars || 1;
+        meta.textContent = `${style || '-'} | Slot ${slot} | ${bars} Bar(s)`;
+
+        const row = document.createElement("div");
+        row.className = "seq-row";
+        
+        const label = document.createElement("div");
+        label.className = "seq-lane";
+        label.textContent = "bass";
+        row.appendChild(label);
+
+        const steps = bassline.steps || [];
+        const vels = bassline.velocities || [];
+        for (let i = 0; i < Math.min(16, steps.length); i++) {
+          const note = steps[i];
+          const vel = vels[i] || 0;
+          const cell = document.createElement("div");
+          cell.className = "step" + ((i % 4 === 0) ? " beat" : "") + (note > 0 ? " on" : "");
+          cell.style.background = velocityToColor(vel);
+          cell.title = note > 0 ? midiToNoteName(note) : "";
+          row.appendChild(cell);
+        }
+        seq.innerHTML = "";
+        seq.appendChild(row);
+        
+        // Populate the individual generator preview as well if it exists
+        const bassMeta = document.getElementById("bassMeta");
+        const bassSeq = document.getElementById("bassSeq");
+        if (bassMeta && bassSeq) {
+             bassMeta.textContent = meta.textContent;
+             bassSeq.innerHTML = "";
+             bassSeq.appendChild(row.cloneNode(true));
+        }
+      }
+      
+      // Generic renderer for Perc/Stabs/FX
+      function renderGenericSequencer(pattern, style, track, slot, elemIdPrefix, laneNameOverride) {
+        const meta = document.getElementById(`top${elemIdPrefix}Meta`);
+        const seq = document.getElementById(`top${elemIdPrefix}Seq`);
+        
+        // Also try the individual one
+        const indSeq = document.getElementById(`${elemIdPrefix.toLowerCase()}Seq`);
+
+        if (!pattern || !pattern.lanes) {
+            if(meta) meta.textContent = "No pattern data";
+            if(seq) seq.innerHTML = "";
+            if(indSeq) indSeq.innerHTML = "";
+            return;
+        }
+
+        const bars = pattern.bars || 1;
+        if(meta) meta.textContent = `${style || '-'} | Slot ${slot} | ${bars} Bar(s)`;
+
+        const wrapper = document.createElement("div");
+        
+        // Determine lanes
+        let lanes = [];
+        if (elemIdPrefix === 'Perc') {
+             lanes = laneOrderFromPattern(pattern);
+        } else {
+             // For single lane things like Stabs/FX
+             lanes = Object.keys(pattern.lanes);
+        }
+
+        lanes.forEach((lane) => {
+          const row = document.createElement("div");
+          row.className = "seq-row";
+          const label = document.createElement("div");
+          label.className = "seq-lane";
+          label.textContent = laneNameOverride || lane;
+          row.appendChild(label);
+
+          const steps = pattern.lanes[lane] || [];
+          for (let i = 0; i < Math.min(16, steps.length); i++) {
+            const vel = steps[i];
+            const cell = document.createElement("div");
+            cell.className = "step" + ((i % 4 === 0) ? " beat" : "") + (vel > 0 ? " on" : "");
+            cell.style.background = velocityToColor(vel);
+            row.appendChild(cell);
+          }
+          wrapper.appendChild(row);
+        });
+
+        if(seq) {
+            seq.innerHTML = "";
+            seq.appendChild(wrapper.cloneNode(true));
+        }
+        if(indSeq) {
+            indSeq.innerHTML = "";
+            indSeq.appendChild(wrapper);
+        }
+      }
+
+      function renderPairCommentary(applied) {
+        const el = document.getElementById("pairCommentary");
+        const pre = document.getElementById("pairApplied");
+        if (pre) pre.textContent = applied ? JSON.stringify(applied, null, 2) : "";
+        if (!el) return;
+        if (!applied || typeof applied !== "object") {
+          el.textContent = "";
+          return;
+        }
+        const summary = typeof applied.summary === "string" ? applied.summary : "";
+        el.innerHTML = `<strong>AI Insight:</strong> ${summary}`;
+      }
+
+      // --- Interaction Handlers ---
+
+      // Global vars for tweaks
+      let lastDrumTarget = { track_index: 0, clip_slot_index: 0, style: null };
+      let lastBassTarget = { track_index: 1, clip_slot_index: 0, style: null };
+
+      document.getElementById("refreshStatus").addEventListener("click", async () => {
+        try {
+          const status = await get("/setup/status");
+          renderStatus(status);
+          log("Status refreshed");
+        } catch (e) { log(e.message); }
+      });
+
+      // Pair Generator
+      async function generatePairAI(alsoLaunch) {
+        const btn = document.getElementById(alsoLaunch ? 'pairGenerateAndLaunch' : 'pairGenerate');
+        setBusy(btn, true);
+        
+        const style = document.getElementById("pairStyle").value;
+        const bars = parseInt(document.getElementById("pairBars").value, 10);
+        const drum_slot = parseInt(document.getElementById("pairDrumSlot").value, 10);
+        const linkSlots = document.getElementById("pairLinkSlots").checked;
+        const bass_slot = linkSlots ? drum_slot : parseInt(document.getElementById("pairBassSlot").value, 10);
+        const prompt = document.getElementById("pairPrompt").value;
+        
+        const incDrums = document.getElementById("pairIncludeDrums").checked;
+        const incBass = document.getElementById("pairIncludeBass").checked;
+        const incPerc = document.getElementById("pairIncludePerc").checked;
+        const incStabs = document.getElementById("pairIncludeStabs").checked;
+        const incFx = document.getElementById("pairIncludeFx").checked;
+
+        try {
+             const resp = await post("/pair/generate_ai", {
+                style, bars,
+                drum_track_index: 0, drum_clip_slot_index: drum_slot,
+                bass_track_index: 1, bass_clip_slot_index: bass_slot,
+                perc_track_index: 2, perc_clip_slot_index: drum_slot,
+                stabs_track_index: 3, stabs_clip_slot_index: drum_slot,
+                fx_track_index: 4, fx_clip_slot_index: drum_slot,
+                include_drums: incDrums,
+                include_bass: incBass,
+                include_perc: incPerc,
+                include_stabs: incStabs,
+                include_fx: incFx,
+                prompt: prompt || null,
+                temperature: 0.7
+             });
+
+             if (!resp.ok) { log("Gen failed"); return; }
+             log(`Generated Pair (${style})`);
+             
+             if (resp.drums?.pattern) {
+                renderTopDrumsSequencer(resp.drums.pattern, style, drum_slot);
+                lastDrumTarget = { track_index: 0, clip_slot_index: drum_slot, style };
+             }
+             if (resp.bass?.bassline) {
+                renderTopBassSequencer(resp.bass.bassline, style, 1, bass_slot);
+                lastBassTarget = { track_index: 1, clip_slot_index: bass_slot, style };
+             }
+             if (resp.perc?.pattern) renderGenericSequencer(resp.perc.pattern, style, 2, drum_slot, "Perc");
+             if (resp.stabs?.pattern) renderGenericSequencer(resp.stabs.pattern, style, 3, drum_slot, "Stabs", "stab");
+             if (resp.fx?.pattern) renderGenericSequencer(resp.fx.pattern, style, 4, drum_slot, "Fx", "fx");
+             
+             renderPairCommentary(resp.applied);
+             window.__lastPairResp = resp;
+
+             // Auto increment slots
+             document.getElementById("pairDrumSlot").value = drum_slot + 1;
+             document.getElementById("pairBassSlot").value = linkSlots ? (drum_slot + 1) : (bass_slot + 1);
+
+             if (alsoLaunch) {
+                if(incDrums) await post("/clips/fire", { track_index: 0, clip_slot_index: drum_slot });
+                if(incBass) await post("/clips/fire", { track_index: 1, clip_slot_index: bass_slot });
+                if(incPerc) await post("/clips/fire", { track_index: 2, clip_slot_index: drum_slot });
+                if(incStabs) await post("/clips/fire", { track_index: 3, clip_slot_index: drum_slot });
+                if(incFx) await post("/clips/fire", { track_index: 4, clip_slot_index: drum_slot });
+             }
+        } catch(e) { log(e.message); } 
+        finally { setBusy(btn, false); }
+      }
+
+      document.getElementById("pairGenerate").addEventListener("click", () => generatePairAI(false));
+      document.getElementById("pairGenerateAndLaunch").addEventListener("click", () => generatePairAI(true));
+
+      // Individual Generators
+      // Bass
+      document.getElementById("bassGenerate").addEventListener("click", async () => {
+         // Simplified version for the sidebar
+         const style = document.getElementById("bassStyle").value;
+         const bars = parseInt(document.getElementById("bassBars").value);
+         const track = parseInt(document.getElementById("bassTrack").value);
+         const slot = parseInt(document.getElementById("bassSlot").value);
+         const prompt = document.getElementById("bassPrompt").value;
+         
+         const resp = await post("/bass/generate_ai", { style, bars, track_index: track, clip_slot_index: slot, prompt });
+         if(resp.ok) {
+            renderTopBassSequencer(resp.bassline, style, track, slot);
+            log("Bass generated");
+         }
+      });
+      document.getElementById("bassGenerateAndLaunch").addEventListener("click", async () => {
+         const btn = document.getElementById("bassGenerateAndLaunch");
+         // Trigger click on generate, then launch
+         // Actually better to just replicate logic or call function if refactored.
+         // For brevity in this POC, I'll trust the user to click Generate first or implement fully later.
+         // Let's implement fully:
+         const style = document.getElementById("bassStyle").value;
+         const bars = parseInt(document.getElementById("bassBars").value);
+         const track = parseInt(document.getElementById("bassTrack").value);
+         const slot = parseInt(document.getElementById("bassSlot").value);
+         const prompt = document.getElementById("bassPrompt").value;
+         
+         const resp = await post("/bass/generate_ai", { style, bars, track_index: track, clip_slot_index: slot, prompt });
+         if(resp.ok) {
+            renderTopBassSequencer(resp.bassline, style, track, slot);
+            await post("/clips/fire", { track_index: track, clip_slot_index: slot });
+            log("Bass generated & launched");
+         }
+      });
+
+      // Drum AI
+      document.getElementById("aiGenerateAndLaunch").addEventListener("click", async () => {
+         const style = document.getElementById("aiStyle").value;
+         const bars = parseInt(document.getElementById("aiBars").value);
+         const slot = parseInt(document.getElementById("aiSlot").value);
+         const prompt = document.getElementById("aiPrompt").value;
+         
+         const resp = await post("/patterns/generate_ai", { style, bars, track_index: 0, clip_slot_index: slot, prompt });
+         if(resp.ok) {
+             renderTopDrumsSequencer(resp.pattern, style, slot);
+             lastDrumTarget = { track_index: 0, clip_slot_index: slot, style };
+             await post("/clips/fire", { track_index: 0, clip_slot_index: slot });
+             log("Drums generated & launched");
+         }
+      });
+
+      // Transport
+      document.getElementById("play").addEventListener("click", () => post("/transport/play"));
+      document.getElementById("stop").addEventListener("click", () => post("/transport/stop"));
+      document.getElementById("setTempo").addEventListener("click", () => {
+         const bpm = parseFloat(document.getElementById("tempo").value);
+         post("/transport/tempo", { bpm });
+      });
+
+      // Style Pads
+      document.querySelectorAll(".style").forEach(btn => {
+         btn.addEventListener("click", async () => {
+            const style = btn.dataset.style;
+            await post("/styles/load", { style, launch: true, load_kit: true });
+            log(`Style ${style} loaded`);
+         });
+      });
+
+      // Scene Master
+      document.querySelectorAll(".scene-btn").forEach(btn => {
+         btn.addEventListener("click", async () => {
+            const sceneIndex = parseInt(btn.dataset.scene);
+            await post("/scenes/fire", { scene_index: sceneIndex });
+            log(`Scene ${sceneIndex + 1} fired`);
+         });
+      });
+
+      // Full Track
+      document.getElementById("trackGenerate").addEventListener("click", async () => {
+          const btn = document.getElementById("trackGenerate");
+          setBusy(btn, true);
+          try {
+              const style = document.getElementById("pairStyle").value; // Reuse style
+              const startSlot = parseInt(document.getElementById("trackStartSlot").value);
+              const bars = parseInt(document.getElementById("trackBarsPerScene").value);
+              
+              const resp = await post("/track/generate_full", { style, start_slot_index: startSlot, bars_per_scene: bars });
+              if(resp.ok) {
+                  window.__lastFullTrackResp = resp;
+                  const scenesEl = document.getElementById("trackScenes");
+                  const arrEl = document.getElementById("trackArrangement");
+                  
+                  scenesEl.innerHTML = resp.scenes.map(s => `<div><strong>${s.name}</strong> (Slot ${s.slot})</div>`).join("");
+                  arrEl.innerHTML = resp.suggested_arrangement.map(a => `<div>${a.scene} x${a.repeats}</div>`).join("");
+                  log("Full track generated");
+              }
+          } catch(e) { log(e.message); }
+          finally { setBusy(btn, false); }
+      });
+
+      // --- Auto-Play Logic ---
+      let __autoPlayToken = 0;
+
+      async function _getTempoBpm() {
+        const st = await get("/transport/status");
+        const args = st && st.tempo && st.tempo.args;
+        if (args && args.length > 0) {
+          const bpm = Number(args[0]);
+          if (!Number.isNaN(bpm) && bpm > 0) return bpm;
+        }
+        return 120;
+      }
+
+      async function _fireSceneClips(scene) {
+        if (!scene || !scene.tracks) return;
+        const tracks = scene.tracks;
+        const items = [
+          { key: "drums", track: 0 },
+          { key: "bass", track: 1 },
+          { key: "perc", track: 2 },
+          { key: "stabs", track: 3 },
+          { key: "fx", track: 4 },
+        ];
+        for (const it of items) {
+          const t = tracks[it.key];
+          if (!t || !t.included) continue;
+          await post("/clips/fire", { track_index: it.track, clip_slot_index: Number(scene.slot) });
+        }
+      }
+
+      async function autoPlaySuggestedArrangement() {
+        const btn = document.getElementById("trackAutoPlay");
+        setBusy(btn, true);
+
+        const token = ++__autoPlayToken;
+        try {
+          const last = window.__lastFullTrackResp;
+          if (!last || !last.ok) {
+            log("Generate a full track first.");
+            return;
+          }
+
+          const scenes = Array.isArray(last.scenes) ? last.scenes : [];
+          const arrangement = Array.isArray(last.suggested_arrangement) ? last.suggested_arrangement : [];
+          const bars = Number(last.bars_per_scene || 1);
+          if (scenes.length === 0 || arrangement.length === 0) {
+            log("No scenes/arrangement found. Generate a full track first.");
+            return;
+          }
+
+          const bpm = await _getTempoBpm();
+          const secondsPerBeat = 60.0 / bpm;
+          const secondsPerBar = 4.0 * secondsPerBeat;
+          const secondsPerScene = Math.max(0.5, bars * secondsPerBar);
+
+          log(`Auto-play starting (bpm=${bpm.toFixed(2)}, bars/scene=${bars}). Use Stop Auto-Play to cancel.`);
+
+          for (const step of arrangement) {
+            if (token !== __autoPlayToken) {
+              log("Auto-play stopped.");
+              return;
+            }
+
+            const nm = step.scene;
+            const repeats = Math.max(1, Number(step.repeats || 1));
+            const sc = scenes.find((s) => s.name === nm);
+            if (!sc) {
+              log(`Skipping missing scene '${nm}'`);
+              continue;
+            }
+
+            for (let r = 0; r < repeats; r++) {
+              if (token !== __autoPlayToken) {
+                log("Auto-play stopped.");
+                return;
+              }
+              await _fireSceneClips(sc);
+              log(`Playing ${nm} (${r + 1}/${repeats}) slot=${sc.slot}`);
+              await new Promise((resolve) => setTimeout(resolve, secondsPerScene * 1000));
+            }
+          }
+
+          log("Auto-play finished.");
+        } catch (e) {
+          log(`Auto-play error: ${e.message}`);
+        } finally {
+          if (token === __autoPlayToken) {
+            setBusy(btn, false);
+          }
+        }
+      }
+
+      function stopAutoPlay() {
+        __autoPlayToken++;
+        const btn = document.getElementById("trackAutoPlay");
+        setBusy(btn, false);
+        log("Auto-play stopped.");
+      }
+
+      document.getElementById("trackAutoPlay").addEventListener("click", async () => {
+          await autoPlaySuggestedArrangement();
+      });
+
+      document.getElementById("trackAutoStop").addEventListener("click", () => {
+          stopAutoPlay();
+      });
+
+      // Knobs
+      let knobDebounce = null;
+      document.querySelectorAll('input[type="range"][data-target]').forEach(rng => {
+         rng.addEventListener("input", () => {
+            const target = rng.dataset.target;
+            const name = rng.dataset.knob;
+            const value = parseFloat(rng.value);
+            
+            if (knobDebounce) clearTimeout(knobDebounce);
+            knobDebounce = setTimeout(() => {
+                const path = target === "drums" ? "/drums/knobs/set" : "/bass/knobs/set";
+                post(path, { name, value });
+            }, 35);
+         });
+      });
+      
+      // Initial Load
+      log("Pulse Studio Ready");
+      renderStatus(null);
+    </script>
+  </body>
+</html>
