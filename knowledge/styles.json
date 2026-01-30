@@ -1,0 +1,643 @@
+{
+  "styles": {
+    "techno": {
+      "tempo": 140,
+      "clip_slot": 0,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VI-III-VII",
+            "degrees": [
+              1,
+              6,
+              3,
+              7
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          },
+          {
+            "name": "i-VII-VI-VII",
+            "degrees": [
+              1,
+              7,
+              6,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "medium",
+        "rhythm": "straight_16",
+        "note_pool": "root_fifth_flat7_octave",
+        "explain": "Techno basslines are usually hypnotic and repetitive. Straight 16th timing with a small note pool keeps it driving without sounding 'busy'."
+      },
+      "recommendations": {
+        "drums": "909/808 style kit (tight kick, crisp hats)",
+        "bass": "acid/mono synth (303-ish) or simple sub"
+      }
+    },
+    "house": {
+      "tempo": 124,
+      "clip_slot": 1,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VII-VI-VII",
+            "degrees": [
+              1,
+              7,
+              6,
+              7
+            ]
+          },
+          {
+            "name": "i-VI-iv-V",
+            "degrees": [
+              1,
+              6,
+              4,
+              5
+            ]
+          },
+          {
+            "name": "i-iv-i-v",
+            "degrees": [
+              1,
+              4,
+              1,
+              5
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "low",
+        "rhythm": "offbeat_8",
+        "note_pool": "root_fifth_octave",
+        "explain": "House bass often breathes around the kick. Offbeat notes and simpler density keep it groovy and danceable."
+      },
+      "recommendations": {
+        "drums": "house kit (soft clap, open hat offbeat)",
+        "bass": "warm mono bass (simple sine/saw)"
+      }
+    },
+    "dnb": {
+      "tempo": 174,
+      "clip_slot": 2,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-III-VII-VI",
+            "degrees": [
+              1,
+              3,
+              7,
+              6
+            ]
+          },
+          {
+            "name": "i-VI-VII-i",
+            "degrees": [
+              1,
+              6,
+              7,
+              1
+            ]
+          },
+          {
+            "name": "i-iv-VII-i",
+            "degrees": [
+              1,
+              4,
+              7,
+              1
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          1,
+          2
+        ],
+        "density": "high",
+        "rhythm": "syncopated_16",
+        "note_pool": "root_minor3_fifth_flat7_octave",
+        "explain": "DnB bass can be more syncopated and denser. Lower octave range helps weight under fast drums."
+      },
+      "recommendations": {
+        "drums": "break kit + tight kick layering",
+        "bass": "sub + reese/wobble (depending on subgenre)"
+      }
+    },
+    "breakbeat": {
+      "tempo": 132,
+      "clip_slot": 3,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VI-III-VII",
+            "degrees": [
+              1,
+              6,
+              3,
+              7
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          },
+          {
+            "name": "i-VII-i-VI",
+            "degrees": [
+              1,
+              7,
+              1,
+              6
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "medium",
+        "rhythm": "syncopated_16",
+        "note_pool": "root_fifth_flat7_octave",
+        "explain": "Breakbeats often pair well with syncopation in the bass. Moderate density keeps it punchy without masking the breaks."
+      },
+      "recommendations": {
+        "drums": "breaks kit (Amen-ish) + punchy kick",
+        "bass": "simple mono bass with syncopation"
+      }
+    },
+    "garage": {
+      "tempo": 132,
+      "clip_slot": 4,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VI-iv-V",
+            "degrees": [
+              1,
+              6,
+              4,
+              5
+            ]
+          },
+          {
+            "name": "i-VII-VI-VII",
+            "degrees": [
+              1,
+              7,
+              6,
+              7
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "medium",
+        "rhythm": "swingy_16",
+        "note_pool": "root_fifth_octave",
+        "explain": "Garage/2-step basslines often feel bouncy. A swingy 16th feel with a simple note pool keeps it rolling."
+      },
+      "recommendations": {
+        "drums": "2-step kit (skippy hats, snappy clap)",
+        "bass": "bouncy mono bass"
+      }
+    },
+    "tribal": {
+      "tempo": 138,
+      "clip_slot": 5,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VII",
+            "degrees": [
+              1,
+              7
+            ]
+          },
+          {
+            "name": "i-iv",
+            "degrees": [
+              1,
+              4
+            ]
+          },
+          {
+            "name": "i-VII-VI",
+            "degrees": [
+              1,
+              7,
+              6
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "low",
+        "rhythm": "straight_8",
+        "note_pool": "root_fifth",
+        "explain": "Tribal/afro-inspired grooves often benefit from space. Lower density and simpler rhythms leave room for percussion."
+      },
+      "recommendations": {
+        "drums": "tribal percussion + steady kick",
+        "bass": "simple root/fifth pulse"
+      }
+    },
+    "acid_techno": {
+      "tempo": 145,
+      "clip_slot": 6,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VI-III-VII",
+            "degrees": [
+              1,
+              6,
+              3,
+              7
+            ]
+          },
+          {
+            "name": "i-VII-VI-VII",
+            "degrees": [
+              1,
+              7,
+              6,
+              7
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "medium",
+        "rhythm": "syncopated_16",
+        "note_pool": "root_minor2_minor3_fifth_flat7_octave",
+        "explain": "Acid techno basslines often use a small, edgy note pool with syncopation. The feel comes from accents, short notes, and filter movement (cutoff/resonance)."
+      },
+      "recommendations": {
+        "drums": "909 kit + extra percussion, tight hats",
+        "bass": "303-style mono synth with filter movement"
+      }
+    },
+    "psytrance": {
+      "tempo": 145,
+      "clip_slot": 7,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VII",
+            "degrees": [
+              1,
+              7
+            ]
+          },
+          {
+            "name": "i-VI-VII",
+            "degrees": [
+              1,
+              6,
+              7
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          1,
+          2
+        ],
+        "density": "high",
+        "rhythm": "steady_16",
+        "note_pool": "root_octave_fifth",
+        "explain": "Psytrance bass is typically tight, consistent, and driving (often 16ths). It sits low and leaves space for the kick by careful timing/short notes."
+      },
+      "recommendations": {
+        "drums": "Psytrance: kick+bass is the identity. Use a punchy, tight kick with short tail and clean transient. Hats/percs are fast but controlled; avoid overly bright EDM hats.",
+        "bass": "Psytrance bass: mono, tight, short notes with rolling feel (often 16ths with space for kick). Keep it rubbery/squelchy and consistent; sidechain/duck under kick.",
+        "timbre": "Hypnotic, psychedelic motion: resonant filter movement, FM/acid bleeps, modulated delays, filtered noise risers. Avoid big pop chords, glossy supersaws, or plucky bell leads.",
+        "mix": "Keep low-end locked (kick+bass as one unit). Control highs; leave room for psychedelic ear-candy above the groove."
+      }
+    },
+    "techno_balkan": {
+      "tempo": 145,
+      "clip_slot": 8,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VI-III-VII",
+            "degrees": [
+              1,
+              6,
+              3,
+              7
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          },
+          {
+            "name": "i-VII-VI-VII",
+            "degrees": [
+              1,
+              7,
+              6,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "medium",
+        "rhythm": "straight_16",
+        "note_pool": "root_minor2_root_fifth_flat7_octave",
+        "explain": "Generated style 'Techno Balkan'. Base blend + user description: 145bpm, dark, balkan flavour, lots of percussion"
+      },
+      "recommendations": {
+        "drums": "909/808 style kit (tight kick, crisp hats)",
+        "bass": "acid/mono synth (303-ish) or simple sub"
+      }
+    },
+    "techno_balkan_2": {
+      "tempo": 138,
+      "clip_slot": 9,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VII",
+            "degrees": [
+              1,
+              7
+            ]
+          },
+          {
+            "name": "i-iv",
+            "degrees": [
+              1,
+              4
+            ]
+          },
+          {
+            "name": "i-VII-VI",
+            "degrees": [
+              1,
+              7,
+              6
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "low",
+        "rhythm": "straight_8",
+        "note_pool": "root_minor2_root_fifth",
+        "explain": "Generated style 'Techno Balkan 2'. Base blend + user description: Mix of techno and balkan, make sure timings work together and sound natural for the two styles mixes together"
+      },
+      "recommendations": {
+        "drums": "tribal percussion + steady kick",
+        "bass": "simple root/fifth pulse"
+      }
+    },
+    "tekno": {
+      "tempo": 175.0,
+      "clip_slot": 0,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VI-III-VII",
+            "degrees": [
+              1,
+              6,
+              3,
+              7
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          },
+          {
+            "name": "i-VII-VI-VII",
+            "degrees": [
+              1,
+              7,
+              6,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "medium",
+        "rhythm": "straight_16",
+        "note_pool": "root_fifth_flat7_octave",
+        "explain": "Generated style 'Tekno'. Base blend + user description: hard techno free party style, 150bpm raw undeerground sound, heavy bassline"
+      },
+      "recommendations": {
+        "drums": "Fast tekno: heavy pounding kick, minimal raw hats/perc, industrial/dirty drum hits. Avoid bright/crispy/shiny top-end.",
+        "bass": "Mono bass with drive/distortion/rumble, heavy low end, simple hypnotic pattern. Avoid bright/plucky/bell-like bass.",
+        "timbre": "Overall: dark, raw, industrial, aggressive. Prefer mono/dirty/noisy textures; avoid bright, sparkly, plucky, bell-like sounds.",
+        "mix": "Keep highs controlled (darker tilt), emphasize kick+bass weight; raw over polished."
+      }
+    }
+  },
+  "bass_defaults": {
+    "techno": {
+      "root": 43,
+      "octave": 0
+    },
+    "house": {
+      "root": 43,
+      "octave": 0
+    },
+    "dnb": {
+      "root": 41,
+      "octave": 0
+    },
+    "breakbeat": {
+      "root": 43,
+      "octave": 0
+    },
+    "garage": {
+      "root": 43,
+      "octave": 0
+    },
+    "tribal": {
+      "root": 43,
+      "octave": 0
+    },
+    "acid_techno": {
+      "root": 45,
+      "octave": 0
+    },
+    "psytrance": {
+      "root": 41,
+      "octave": 0
+    },
+    "techno_balkan": {
+      "root": 43,
+      "octave": 0
+    },
+    "techno_balkan_2": {
+      "root": 43,
+      "octave": 0
+    },
+    "tekno": {
+      "root": 43,
+      "octave": 0
+    }
+  },
+  "instrument_catalog": {
+    "drums": [
+      "909 Core Kit",
+      "808 Core Kit",
+      "Core Kit"
+    ],
+    "bass": [
+      "Basic 303 Bass",
+      "Operator",
+      "Analog",
+      "Wavetable"
+    ],
+    "stabs": [
+      "Analog",
+      "Wavetable",
+      "Operator"
+    ],
+    "pads": [
+      "Wavetable",
+      "Analog"
+    ],
+    "lead": [
+      "Operator",
+      "Wavetable"
+    ]
+  }
+}

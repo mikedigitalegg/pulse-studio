@@ -33,7 +33,7 @@ class AbletonController:
             args = []
         print(f"Sending: {address} {args}")
         self.client.send_message(address, args)
-        time.sleep(0.05)  # Small delay to avoid overwhelming Ableton
+        time.sleep(0.01)  # Small delay to avoid overwhelming Ableton
     
     # ==================== Song Control ====================
     
