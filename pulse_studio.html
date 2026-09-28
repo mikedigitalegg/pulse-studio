@@ -525,7 +525,12 @@
 
       /* Visualizer (Live output meters) */
       .viz-stage { padding: 0; overflow: hidden; background: #07080b; }
-      #vizCanvas { display: block; width: 100%; height: 360px; }
+      #vizCanvas { display: block; width: 100%; height: 440px; }
+      .viz-stage:fullscreen { border-radius: 0; border: 0; margin: 0; }
+      .viz-stage:fullscreen #vizCanvas { height: 100vh; }
+      .viz-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px 16px; margin-bottom: 16px; }
+      .viz-controls > div { min-width: 150px; }
+      .viz-controls input[type="range"] { width: 150px; }
       .viz-tracks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 20px; }
       .viz-track { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; font-size: 12px; }
       .viz-track-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -639,7 +644,31 @@
       <div id="view-visualizer" class="view-section">
         <h2>Visualizer</h2>
         <div id="vizOffline" class="callout" style="margin-bottom: 20px; display: none;"></div>
-        <div class="card viz-stage"><canvas id="vizCanvas" aria-label="Master output level and beat pulse"></canvas></div>
+        <div class="viz-controls">
+          <div>
+            <label class="control-label" for="vizScene">Scene</label>
+            <select id="vizScene"></select>
+          </div>
+          <div>
+            <label class="control-label" for="vizTheme">Theme</label>
+            <select id="vizTheme"></select>
+          </div>
+          <div>
+            <label class="control-label" for="vizAuto">Auto change</label>
+            <select id="vizAuto">
+              <option value="0">Off</option>
+              <option value="4">Every 4 bars</option>
+              <option value="8">Every 8 bars</option>
+              <option value="16">Every 16 bars</option>
+            </select>
+          </div>
+          <div>
+            <label class="control-label" for="vizIntensity">Intensity</label>
+            <input id="vizIntensity" type="range" min="0.4" max="1.6" step="0.05" value="1">
+          </div>
+          <button id="vizFullscreen" class="secondary" type="button">Fullscreen</button>
+        </div>
+        <div class="card viz-stage"><canvas id="vizCanvas" aria-label="Visualizer driven by Live's output meters"></canvas></div>
         <div class="card">
           <h4>Track Output</h4>
           <div id="vizTracks" class="viz-tracks"></div>
@@ -4025,6 +4054,1113 @@
       switchView('compose');
     </script>
     <script>
+      // Visualizer scenes, ported from Pulse Canvas (pulse_canvas/app.js). The drawing code is
+      // unchanged apart from reading its audio state from S instead of module globals; S is fed
+      // from Live's meters by the Visualizer view rather than by a microphone FFT.
+      (function () {
+        let ctx;
+        const S = {
+          theme: null, size: 1, spec: new Float32Array(128),
+          phase: 0, bassPulse: 0, bassImpact: 0, snareImpact: 0, hatEnergy: 0,
+          phraseContrast: 0, transitionFlash: 0, waterfallHistory: [],
+        };
+
+        const themes = {
+          aurora: {
+            name: "Aurora",
+            backgroundLow: [20, 62, 120],
+            backgroundMid: [34, 152, 175],
+            backgroundHigh: [145, 244, 255],
+            bloomA: [255, 209, 102],
+            bloomB: [100, 230, 255],
+            ring: [120, 238, 255],
+            barsBaseHue: 190,
+            barsHueRange: 70,
+            wave: [255, 255, 255],
+            core: [245, 252, 255]
+          },
+          sunset: {
+            name: "Sunset",
+            backgroundLow: [62, 14, 60],
+            backgroundMid: [189, 56, 88],
+            backgroundHigh: [255, 164, 97],
+            bloomA: [255, 196, 117],
+            bloomB: [255, 107, 107],
+            ring: [255, 207, 125],
+            barsBaseHue: 24,
+            barsHueRange: 50,
+            wave: [255, 236, 212],
+            core: [255, 245, 223]
+          },
+          noir: {
+            name: "Noir Pulse",
+            backgroundLow: [10, 14, 24],
+            backgroundMid: [33, 33, 48],
+            backgroundHigh: [166, 0, 255],
+            bloomA: [208, 116, 255],
+            bloomB: [77, 209, 255],
+            ring: [230, 242, 255],
+            barsBaseHue: 275,
+            barsHueRange: 110,
+            wave: [214, 229, 255],
+            core: [255, 255, 255]
+          },
+          forest: {
+            name: "Forest Glow",
+            backgroundLow: [7, 33, 24],
+            backgroundMid: [45, 111, 77],
+            backgroundHigh: [173, 255, 188],
+            bloomA: [244, 211, 94],
+            bloomB: [102, 255, 173],
+            ring: [150, 255, 208],
+            barsBaseHue: 135,
+            barsHueRange: 55,
+            wave: [231, 255, 240],
+            core: [246, 255, 247]
+          },
+          glacier: {
+            name: "Glacier",
+            backgroundLow: [7, 22, 44],
+            backgroundMid: [33, 92, 148],
+            backgroundHigh: [187, 242, 255],
+            bloomA: [183, 234, 255],
+            bloomB: [87, 205, 255],
+            ring: [212, 248, 255],
+            barsBaseHue: 205,
+            barsHueRange: 42,
+            wave: [227, 248, 255],
+            core: [245, 252, 255]
+          },
+          ember: {
+            name: "Ember",
+            backgroundLow: [31, 7, 7],
+            backgroundMid: [117, 33, 18],
+            backgroundHigh: [255, 143, 57],
+            bloomA: [255, 212, 115],
+            bloomB: [255, 94, 58],
+            ring: [255, 196, 105],
+            barsBaseHue: 15,
+            barsHueRange: 36,
+            wave: [255, 228, 193],
+            core: [255, 247, 223]
+          },
+          volt: {
+            name: "Volt",
+            backgroundLow: [8, 18, 10],
+            backgroundMid: [42, 88, 18],
+            backgroundHigh: [225, 255, 105],
+            bloomA: [246, 255, 146],
+            bloomB: [89, 255, 122],
+            ring: [232, 255, 173],
+            barsBaseHue: 98,
+            barsHueRange: 38,
+            wave: [244, 255, 223],
+            core: [252, 255, 242]
+          },
+          solstice: {
+            name: "Solstice",
+            backgroundLow: [26, 18, 66],
+            backgroundMid: [93, 73, 193],
+            backgroundHigh: [255, 191, 116],
+            bloomA: [255, 210, 129],
+            bloomB: [255, 131, 188],
+            ring: [255, 228, 163],
+            barsBaseHue: 34,
+            barsHueRange: 82,
+            wave: [255, 239, 223],
+            core: [255, 248, 235]
+          },
+          rose: {
+            name: "Rose Glow",
+            backgroundLow: [39, 10, 26],
+            backgroundMid: [132, 36, 84],
+            backgroundHigh: [255, 160, 201],
+            bloomA: [255, 221, 186],
+            bloomB: [255, 112, 170],
+            ring: [255, 214, 230],
+            barsBaseHue: 330,
+            barsHueRange: 42,
+            wave: [255, 233, 243],
+            core: [255, 247, 250]
+          },
+          oceanic: {
+            name: "Oceanic",
+            backgroundLow: [4, 25, 41],
+            backgroundMid: [0, 96, 128],
+            backgroundHigh: [79, 221, 217],
+            bloomA: [129, 240, 223],
+            bloomB: [34, 154, 255],
+            ring: [173, 246, 240],
+            barsBaseHue: 182,
+            barsHueRange: 34,
+            wave: [219, 250, 247],
+            core: [238, 255, 251]
+          },
+          starlight: {
+            name: "Starlight",
+            backgroundLow: [9, 15, 42],
+            backgroundMid: [47, 61, 128],
+            backgroundHigh: [182, 198, 255],
+            bloomA: [255, 232, 169],
+            bloomB: [152, 171, 255],
+            ring: [226, 232, 255],
+            barsBaseHue: 220,
+            barsHueRange: 64,
+            wave: [239, 244, 255],
+            core: [255, 252, 242]
+          }
+        };
+
+        function drawTransitionOverlay(width, height) {
+          if (!Number.isFinite(width) || !Number.isFinite(height) || width < 1 || height < 1) {
+            return;
+          }
+
+          const flash = Math.max(S.transitionFlash, Math.max(0, S.bassImpact - 0.72) * 0.22);
+          if (flash <= 0.01) {
+            return;
+          }
+
+          const tintTheme = S.theme;
+          const sweepSpan = Math.max(width * 1.8, 1);
+          const sweep = ((S.phase * 90) % sweepSpan) - width * 0.4;
+
+          const wash = ctx.createLinearGradient(sweep, 0, sweep + width * 0.6, height);
+          wash.addColorStop(0, rgba(tintTheme.bloomA, 0));
+          wash.addColorStop(0.45, rgba(tintTheme.bloomA, 0.04 + flash * 0.16));
+          wash.addColorStop(0.7, rgba(tintTheme.bloomB, 0.03 + flash * 0.14));
+          wash.addColorStop(1, rgba(tintTheme.backgroundLow, 0));
+          ctx.fillStyle = wash;
+          ctx.fillRect(0, 0, width, height);
+
+          const burst = ctx.createRadialGradient(width * 0.5, height * 0.5, 30, width * 0.5, height * 0.5, Math.max(width, height) * (0.2 + flash * 0.22));
+          burst.addColorStop(0, rgba(tintTheme.core, 0.02 + flash * 0.12));
+          burst.addColorStop(0.32, rgba(tintTheme.bloomA, 0.04 + flash * 0.16));
+          burst.addColorStop(0.75, rgba(tintTheme.bloomB, 0.02 + flash * 0.1));
+          burst.addColorStop(1, rgba(tintTheme.backgroundLow, 0));
+          ctx.fillStyle = burst;
+          ctx.fillRect(0, 0, width, height);
+
+          ctx.strokeStyle = rgba(tintTheme.wave, 0.04 + flash * 0.12);
+          ctx.lineWidth = 2 + flash * 6;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 12) {
+            const normalized = x / width;
+            const y = height * 0.5 + Math.sin(normalized * 12 + S.phase * 4.2) * (10 + flash * 28);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+        }
+
+        function mixChannel(base, peak, amount) {
+          return Math.round(base + (peak - base) * amount);
+        }
+
+        function rgba(values, alpha) {
+          return `rgba(${values[0]}, ${values[1]}, ${values[2]}, ${alpha})`;
+        }
+
+        function clearBackground(width, height, theme, bass, mids, highs) {
+          const background = ctx.createLinearGradient(0, 0, width, height);
+          background.addColorStop(0, `rgba(${mixChannel(theme.backgroundLow[0], theme.backgroundHigh[0], highs)}, ${mixChannel(theme.backgroundLow[1], theme.backgroundHigh[1], mids)}, ${mixChannel(theme.backgroundLow[2], theme.backgroundHigh[2], bass)}, 1)`);
+          background.addColorStop(0.4, `rgba(${theme.backgroundMid[0]}, ${theme.backgroundMid[1]}, ${theme.backgroundMid[2]}, 0.96)`);
+          background.addColorStop(1, rgba(theme.backgroundLow, 1));
+          ctx.fillStyle = background;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        function drawBloom(width, height, theme, bass, mids) {
+          const bloom = ctx.createRadialGradient(
+            width * 0.5,
+            height * 0.5,
+            40,
+            width * 0.5,
+            height * 0.5,
+            Math.max(width, height) * (0.18 + bass * 0.24)
+          );
+          bloom.addColorStop(0, rgba(theme.bloomA, 0.16 + bass * 0.35));
+          bloom.addColorStop(0.4, rgba(theme.bloomB, 0.1 + mids * 0.28));
+          bloom.addColorStop(1, rgba(theme.backgroundLow, 0));
+          ctx.fillStyle = bloom;
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        function drawSubwooferFloor(width, height, theme) {
+          const floorHeight = height * (0.16 + S.bassImpact * 0.08);
+          const top = height - floorHeight;
+          const floorGlow = ctx.createLinearGradient(0, top, 0, height);
+          floorGlow.addColorStop(0, rgba(theme.bloomA, 0.02 + S.bassImpact * 0.12));
+          floorGlow.addColorStop(0.5, rgba(theme.bloomB, 0.08 + S.bassPulse * 0.16));
+          floorGlow.addColorStop(1, rgba(theme.backgroundLow, 0.34 + S.bassImpact * 0.18));
+          ctx.fillStyle = floorGlow;
+          ctx.fillRect(0, top, width, floorHeight);
+
+          ctx.strokeStyle = rgba(theme.wave, 0.08 + S.bassImpact * 0.16);
+          ctx.lineWidth = 1.5 + S.bassImpact * 4;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 14) {
+            const normalized = x / width;
+            const y = top + Math.sin(normalized * 10 + S.phase * 1.6) * (4 + S.bassImpact * 14);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+        }
+        function drawTrebleAccents(width, height, theme) {
+          const sparkle = Math.max(S.hatEnergy, S.snareImpact * 0.35);
+          if (sparkle <= 0.01) {
+            return;
+          }
+
+          ctx.strokeStyle = rgba(theme.wave, 0.03 + S.snareImpact * 0.16);
+          ctx.lineWidth = 1.5 + S.snareImpact * 5;
+          ctx.beginPath();
+          ctx.moveTo(0, height * (0.5 - S.snareImpact * 0.06));
+          ctx.lineTo(width, height * (0.5 + S.snareImpact * 0.06));
+          ctx.stroke();
+
+          ctx.lineWidth = 1 + sparkle * 2.5;
+          for (let i = 0; i < 9; i += 1) {
+            const x = ((i + 1) / 10) * width + Math.sin(S.phase * 2.2 + i * 1.6) * width * 0.015;
+            const y = height * (0.12 + (i % 3) * 0.08) + Math.cos(S.phase * 3.4 + i) * 12;
+            const length = 16 + S.hatEnergy * 42 + (i % 2 === 0 ? S.snareImpact * 18 : 0);
+            ctx.strokeStyle = rgba(i % 2 === 0 ? theme.bloomB : theme.wave, 0.05 + sparkle * 0.16);
+            ctx.beginPath();
+            ctx.moveTo(x - length * 0.5, y - length * 0.3);
+            ctx.lineTo(x + length * 0.5, y + length * 0.3);
+            ctx.stroke();
+          }
+
+          ctx.fillStyle = rgba(theme.core, 0.03 + S.hatEnergy * 0.1);
+          for (let i = 0; i < 18; i += 1) {
+            const x = (i / 17) * width;
+            const y = height * (0.08 + (i % 4) * 0.06) + Math.sin(S.phase * 5 + i) * (4 + S.hatEnergy * 10);
+            const size = 1 + S.hatEnergy * 2.6 + (i % 5 === 0 ? S.snareImpact * 2.4 : 0);
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        function drawBassAccent(width, height, theme, bass, overall) {
+          const centerX = width / 2;
+          const centerY = height / 2;
+          const sizeFactor = S.size;
+          const punch = S.bassImpact * sizeFactor;
+          const pulseSize = Math.max(width, height) * (0.07 + S.bassPulse * 0.18 * sizeFactor + punch * 0.12 + bass * 0.05 * sizeFactor);
+
+          const flash = ctx.createRadialGradient(
+            centerX,
+            centerY,
+            16,
+            centerX,
+            centerY,
+            pulseSize
+          );
+          flash.addColorStop(0, rgba(theme.core, 0.08 + punch * 0.24));
+          flash.addColorStop(0.22, rgba(theme.bloomA, 0.12 + S.bassPulse * 0.22 * sizeFactor + punch * 0.18));
+          flash.addColorStop(0.52, rgba(theme.bloomB, 0.05 + S.bassPulse * 0.16 * sizeFactor));
+          flash.addColorStop(1, rgba(theme.backgroundLow, 0));
+          ctx.fillStyle = flash;
+          ctx.fillRect(0, 0, width, height);
+
+          const coneRadius = Math.min(width, height) * (0.1 + S.bassPulse * 0.08 * sizeFactor + punch * 0.07);
+          const coneGradient = ctx.createRadialGradient(centerX, centerY, coneRadius * 0.18, centerX, centerY, coneRadius);
+          coneGradient.addColorStop(0, rgba(theme.core, 0.18 + punch * 0.24));
+          coneGradient.addColorStop(0.4, rgba(theme.bloomA, 0.12 + punch * 0.18));
+          coneGradient.addColorStop(0.72, rgba(theme.bloomB, 0.06 + S.bassPulse * 0.12));
+          coneGradient.addColorStop(1, rgba(theme.backgroundLow, 0));
+          ctx.fillStyle = coneGradient;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, coneRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = rgba(theme.bloomA, 0.12 + punch * 0.26);
+          ctx.lineWidth = 2 + punch * 8;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, Math.min(width, height) * (0.16 + S.bassPulse * 0.12 * sizeFactor + punch * 0.11 + overall * 0.03), 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.strokeStyle = rgba(theme.wave, 0.05 + punch * 0.12);
+          ctx.lineWidth = 1.5 + punch * 4;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, Math.min(width, height) * (0.22 + punch * 0.16), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        function renderHaloScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const centerX = width / 2;
+          const centerY = height / 2;
+          const baseRadius = Math.min(width, height) * 0.16;
+          const ringRadius = baseRadius + bass * 110;
+          const ringThickness = 14 + overall * 22;
+
+          ctx.lineWidth = ringThickness;
+          ctx.strokeStyle = rgba(theme.ring, 0.28 + highs * 0.55);
+          ctx.beginPath();
+          for (let angle = 0; angle <= Math.PI * 2 + 0.1; angle += 0.06) {
+            const wave = Math.sin(angle * 5 + S.phase * 2.4) * mids * 18;
+            const pulse = Math.sin(angle * 2 - S.phase) * highs * 12;
+            const radius = ringRadius + wave + pulse + Math.cos(angle * 2 + S.phase * 1.4) * S.bassImpact * 12 * S.size;
+            const x = centerX + Math.cos(angle) * radius;
+            const y = centerY + Math.sin(angle) * radius;
+            if (angle === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+
+          ctx.strokeStyle = rgba(theme.wave, 0.28 + overall * 0.2);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let x = 0; x < width; x += 8) {
+            const normalized = x / width;
+            const y = centerY + Math.sin(normalized * 18 + S.phase * 3.6) * (18 + mids * 64) + Math.cos(normalized * 7 - S.phase * 2.2) * (8 + highs * 34);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+
+          ctx.fillStyle = rgba(theme.core, 0.12 + overall * 0.35);
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, baseRadius * (0.7 + overall * 0.9), 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        function renderTunnelScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const centerX = width / 2;
+          const centerY = height / 2;
+          const ringCount = 16;
+          for (let i = ringCount; i >= 1; i -= 1) {
+            const depth = i / ringCount;
+            const radius = Math.min(width, height) * 0.08 + depth * Math.min(width, height) * (0.44 + bass * 0.18);
+            const wobble = Math.sin(S.phase * 2 + i * 0.8) * mids * 24;
+            ctx.strokeStyle = rgba(theme.ring, 0.05 + depth * 0.14 + highs * 0.16);
+            ctx.lineWidth = 2 + depth * 5;
+            ctx.beginPath();
+            for (let angle = 0; angle <= Math.PI * 2 + 0.08; angle += 0.12) {
+              const distortion = Math.sin(angle * 6 + S.phase * 2.8 + i) * (6 + highs * 18) + wobble;
+              const x = centerX + Math.cos(angle) * (radius + distortion);
+              const y = centerY + Math.sin(angle) * (radius + distortion * 0.55);
+              if (angle === 0) {
+                ctx.moveTo(x, y);
+              } else {
+                ctx.lineTo(x, y);
+              }
+            }
+            ctx.stroke();
+          }
+
+          for (let i = 0; i < 24; i += 1) {
+            const angle = (Math.PI * 2 * i) / 24 + S.phase * 0.3;
+            const length = Math.min(width, height) * (0.18 + highs * 0.3);
+            ctx.strokeStyle = rgba(theme.bloomB, 0.14 + overall * 0.22);
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(centerX, centerY);
+            ctx.lineTo(centerX + Math.cos(angle) * length, centerY + Math.sin(angle) * length);
+            ctx.stroke();
+          }
+        }
+
+        function renderConstellationScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const points = [];
+          const count = 80;
+          for (let i = 0; i < count; i += 1) {
+            const t = i / count;
+            const x = (Math.sin(t * 17 + S.phase * (0.7 + bass)) * 0.38 + 0.5 + Math.cos(t * 7 - S.phase) * 0.08) * width;
+            const y = (Math.cos(t * 13 - S.phase * (0.5 + highs)) * 0.34 + 0.5 + Math.sin(t * 5 + S.phase * 0.8) * 0.1) * height;
+            const size = 1.5 + mids * 4 + (i % 5 === 0 ? bass * 7 : 0);
+            points.push({ x, y, size });
+          }
+
+          for (let i = 0; i < points.length; i += 1) {
+            const a = points[i];
+            for (let j = i + 1; j < Math.min(points.length, i + 4); j += 1) {
+              const b = points[j];
+              const distance = Math.hypot(a.x - b.x, a.y - b.y);
+              if (distance < 160 + highs * 120) {
+                ctx.strokeStyle = rgba(theme.wave, 0.03 + (1 - distance / 280) * (0.12 + overall * 0.18));
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(a.x, a.y);
+                ctx.lineTo(b.x, b.y);
+                ctx.stroke();
+              }
+            }
+          }
+
+          points.forEach((point, index) => {
+            ctx.fillStyle = rgba(index % 3 === 0 ? theme.bloomA : theme.bloomB, 0.35 + overall * 0.4);
+            ctx.beginPath();
+            ctx.arc(point.x, point.y, point.size, 0, Math.PI * 2);
+            ctx.fill();
+          });
+        }
+
+        function renderEqualizerScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const columns = 72;
+          const spacing = width / columns;
+          for (let i = 0; i < columns; i += 1) {
+            const bucket = Math.min(S.spec.length - 1, Math.floor(i * (S.spec.length / columns)));
+            const value = S.spec[bucket];
+            const x = i * spacing;
+            const sizeFactor = S.size;
+            const lowBandBoost = i < Math.floor(columns * 0.22) ? 1 + S.bassPulse * 1.1 * sizeFactor + S.bassImpact * 1.2 * sizeFactor : 1 + S.bassPulse * 0.2 * sizeFactor;
+            const barHeight = value * height * 0.55 * lowBandBoost;
+            const lift = Math.sin(S.phase * 2 + i * 0.28) * highs * 24;
+            const hue = theme.barsBaseHue - value * theme.barsHueRange + Math.sin(i * 0.2 + S.phase) * 18;
+            ctx.fillStyle = `hsla(${hue}, 92%, ${54 + value * 22}%, ${0.42 + value * 0.44})`;
+            const kickDrop = i < Math.floor(columns * 0.18) ? S.bassImpact * 36 * sizeFactor : 0;
+            ctx.fillRect(x, height - barHeight - 32 + lift - kickDrop, Math.max(4, spacing - 4), barHeight + kickDrop);
+            ctx.fillRect(x, 32 - lift, Math.max(4, spacing - 4), barHeight * 0.32);
+          }
+
+          ctx.strokeStyle = rgba(theme.ring, 0.26 + overall * 0.34);
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 10) {
+            const normalized = x / width;
+            const y = height * 0.5 + Math.sin(normalized * 14 + S.phase * 3.2) * (20 + bass * 72) + Math.cos(normalized * 11 - S.phase * 1.8) * (8 + mids * 28);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+        }
+
+        function renderRadialBarsScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const centerX = width / 2;
+          const centerY = height / 2;
+          const barCount = 96;
+          const innerRadius = Math.min(width, height) * (0.15 + bass * 0.04 - S.bassImpact * 0.018 * S.size);
+
+          for (let i = 0; i < barCount; i += 1) {
+            const angle = (Math.PI * 2 * i) / barCount + S.phase * 0.22;
+            const bucket = Math.min(S.spec.length - 1, Math.floor(i * (S.spec.length / barCount)));
+            const value = S.spec[bucket];
+            const sizeFactor = S.size;
+            const radialBoost = i < Math.floor(barCount * 0.25) ? 1 + S.bassPulse * 0.9 * sizeFactor + S.bassImpact * 0.95 * sizeFactor : 1 + S.bassPulse * 0.2 * sizeFactor;
+            const length = 30 + value * Math.min(width, height) * 0.26 * radialBoost + S.bassImpact * 12 * sizeFactor;
+            const x1 = centerX + Math.cos(angle) * innerRadius;
+            const y1 = centerY + Math.sin(angle) * innerRadius;
+            const x2 = centerX + Math.cos(angle) * (innerRadius + length);
+            const y2 = centerY + Math.sin(angle) * (innerRadius + length);
+            const hue = theme.barsBaseHue - value * theme.barsHueRange + i * 0.9;
+            ctx.strokeStyle = `hsla(${hue}, 94%, ${56 + value * 20}%, ${0.34 + value * 0.5})`;
+            ctx.lineWidth = 2 + value * 7;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+          }
+
+          ctx.strokeStyle = rgba(theme.ring, 0.24 + highs * 0.4);
+          ctx.lineWidth = 4 + overall * 6;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, innerRadius - 12, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.fillStyle = rgba(theme.core, 0.14 + overall * 0.28);
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, innerRadius * (0.55 + overall * 0.24), 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        function renderSubwooferScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const centerX = width / 2;
+          const centerY = height * 0.54;
+          const sizeFactor = S.size;
+          const punch = S.bassImpact * sizeFactor;
+          const shimmer = Math.max(mids * 0.75, highs * 0.9, S.hatEnergy * 0.85, S.snareImpact * 0.45);
+          const outerRadius = Math.min(width, height) * (0.24 + S.bassPulse * 0.03 * sizeFactor + punch * 0.05);
+          const surroundRadius = outerRadius * (0.86 + S.bassPulse * 0.05 * sizeFactor + punch * 0.04 + shimmer * 0.015);
+          const coneRadius = outerRadius * (0.62 + S.bassPulse * 0.16 * sizeFactor - punch * 0.2 + shimmer * 0.028);
+          const dustRadius = coneRadius * (0.22 + punch * 0.18 + shimmer * 0.06);
+          const rippleReach = outerRadius * (1.25 + S.bassPulse * 0.32 * sizeFactor + punch * 0.45 + shimmer * 0.08);
+
+          const backGlow = ctx.createRadialGradient(centerX, centerY, dustRadius * 0.2, centerX, centerY, rippleReach * 1.8);
+          backGlow.addColorStop(0, rgba(theme.bloomA, 0.18 + punch * 0.14));
+          backGlow.addColorStop(0.28, rgba(theme.bloomB, 0.12 + S.bassPulse * 0.14 + shimmer * 0.08));
+          backGlow.addColorStop(0.7, rgba(theme.backgroundMid, 0.08 + overall * 0.08));
+          backGlow.addColorStop(1, rgba(theme.backgroundLow, 0));
+          ctx.fillStyle = backGlow;
+          ctx.fillRect(0, 0, width, height);
+
+          for (let i = 0; i < 5; i += 1) {
+            const rippleRadius = rippleReach * (0.92 + i * 0.18 + punch * 0.1 + shimmer * 0.025);
+            ctx.strokeStyle = rgba(i % 2 === 0 ? theme.bloomA : theme.bloomB, Math.max(0, 0.16 + punch * 0.14 + shimmer * 0.05 - i * 0.028));
+            ctx.lineWidth = Math.max(1.5, 6 - i + punch * 5 + shimmer * 1.8);
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, rippleRadius, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          const frameGradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.5, centerX, centerY, outerRadius * 1.08);
+          frameGradient.addColorStop(0, rgba(theme.backgroundLow, 0.22));
+          frameGradient.addColorStop(0.72, rgba(theme.backgroundMid, 0.82));
+          frameGradient.addColorStop(1, rgba(theme.backgroundLow, 0.96));
+          ctx.fillStyle = frameGradient;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, outerRadius * 1.04, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = rgba(theme.ring, 0.2 + overall * 0.18 + punch * 0.12 + shimmer * 0.06);
+          ctx.lineWidth = 16 + punch * 10 + shimmer * 3;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.strokeStyle = rgba(theme.wave, 0.1 + S.bassPulse * 0.18 + punch * 0.16 + shimmer * 0.08);
+          ctx.lineWidth = 10 + S.bassPulse * 14 * sizeFactor + punch * 10 + shimmer * 4;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, surroundRadius, 0, Math.PI * 2);
+          ctx.stroke();
+
+          const coneGradient = ctx.createRadialGradient(centerX - outerRadius * 0.18, centerY - outerRadius * 0.22, dustRadius * 0.2, centerX, centerY, coneRadius);
+          coneGradient.addColorStop(0, rgba(theme.core, 0.28 + punch * 0.16 + shimmer * 0.06));
+          coneGradient.addColorStop(0.34, rgba(theme.bloomA, 0.18 + S.bassPulse * 0.14 + mids * 0.1));
+          coneGradient.addColorStop(0.72, rgba(theme.bloomB, 0.14 + punch * 0.1 + highs * 0.08));
+          coneGradient.addColorStop(1, rgba(theme.backgroundMid, 0.92));
+          ctx.fillStyle = coneGradient;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, coneRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = rgba(theme.wave, 0.12 + punch * 0.24 + shimmer * 0.08);
+          ctx.lineWidth = 5 + punch * 9 + shimmer * 3;
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, coneRadius * (0.96 + punch * 0.06), 0, Math.PI * 2);
+          ctx.stroke();
+
+          ctx.strokeStyle = rgba(theme.wave, 0.06 + highs * 0.12 + S.hatEnergy * 0.1);
+          ctx.lineWidth = 1.2 + shimmer * 1.8;
+          for (let i = 0; i < 4; i += 1) {
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, coneRadius * (0.56 + i * 0.1 + Math.sin(S.phase * 2.2 + i) * 0.012 + shimmer * 0.016), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          ctx.strokeStyle = rgba(theme.bloomB, 0.06 + shimmer * 0.12);
+          ctx.lineWidth = 1.2 + highs * 1.8;
+          for (let i = 0; i < 10; i += 1) {
+            const angle = (Math.PI * 2 * i) / 10 + S.phase * (0.55 + shimmer * 0.12);
+            const inner = dustRadius * (1.2 + Math.sin(angle * 2 + S.phase) * 0.06);
+            const outer = coneRadius * (0.88 + Math.cos(angle * 3 - S.phase) * 0.05);
+            ctx.beginPath();
+            ctx.moveTo(centerX + Math.cos(angle) * inner, centerY + Math.sin(angle) * inner);
+            ctx.lineTo(centerX + Math.cos(angle) * outer, centerY + Math.sin(angle) * outer);
+            ctx.stroke();
+          }
+
+          ctx.fillStyle = rgba(theme.core, 0.2 + punch * 0.28 + S.bassPulse * 0.08 + shimmer * 0.08);
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, dustRadius, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = rgba(theme.bloomA, 0.08 + shimmer * 0.1);
+          for (let i = 0; i < 14; i += 1) {
+            const angle = (Math.PI * 2 * i) / 14 + S.phase * (0.8 + highs * 0.3);
+            const radius = surroundRadius * (1.05 + Math.sin(i + S.phase * 1.6) * 0.025);
+            const x = centerX + Math.cos(angle) * radius;
+            const y = centerY + Math.sin(angle) * radius;
+            const size = 1.2 + shimmer * 2 + (i % 4 === 0 ? S.snareImpact * 1.4 : 0);
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+          }
+
+          ctx.strokeStyle = rgba(theme.bloomA, 0.12 + S.bassImpact * 0.18 + shimmer * 0.06);
+          ctx.lineWidth = 2 + punch * 5;
+          for (let i = 0; i < 3; i += 1) {
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, outerRadius * (1.12 + i * 0.14 + punch * 0.08 + shimmer * 0.02), 0, Math.PI * 2);
+            ctx.stroke();
+          }
+
+          ctx.strokeStyle = rgba(theme.wave, 0.08 + overall * 0.12 + mids * 0.08);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 12) {
+            const normalized = x / width;
+            const y = centerY + Math.sin(normalized * 10 + S.phase * 1.8) * (12 + S.bassImpact * 30) + Math.cos(normalized * 6 - S.phase) * (4 + mids * 14 + shimmer * 10);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+        }
+        function renderDualSubScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const centerX = width / 2;
+          const topY = height * 0.33;
+          const bottomY = height * 0.69;
+          const sizeFactor = S.size;
+          const shimmer = Math.max(mids * 0.72, highs * 0.88, S.hatEnergy * 0.8, S.snareImpact * 0.4);
+          const topPunch = Math.max(0, S.bassImpact * 0.78 + Math.sin(S.phase * 1.8) * 0.05);
+          const bottomPunch = Math.max(0, S.bassImpact * 1.05 + Math.cos(S.phase * 1.4 + 0.9) * 0.06);
+          const cabinetGlow = ctx.createLinearGradient(0, 0, width, height);
+          cabinetGlow.addColorStop(0, rgba(theme.backgroundLow, 0.12));
+          cabinetGlow.addColorStop(0.5, rgba(theme.bloomA, 0.06 + S.bassImpact * 0.08));
+          cabinetGlow.addColorStop(1, rgba(theme.backgroundLow, 0.16));
+          ctx.fillStyle = cabinetGlow;
+          ctx.fillRect(0, 0, width, height);
+
+          function drawDriver(centerY, punch, scale, accentFlip) {
+            const outerRadius = Math.min(width, height) * (0.19 * scale + S.bassPulse * 0.024 * sizeFactor + punch * 0.04);
+            const surroundRadius = outerRadius * (0.87 + S.bassPulse * 0.04 * sizeFactor + punch * 0.03 + shimmer * 0.012);
+            const coneRadius = outerRadius * (0.64 + S.bassPulse * 0.14 * sizeFactor - punch * 0.17 + shimmer * 0.02);
+            const dustRadius = coneRadius * (0.21 + punch * 0.16 + shimmer * 0.05);
+            const waveRadius = outerRadius * (1.22 + S.bassPulse * 0.2 * sizeFactor + punch * 0.26 + shimmer * 0.05);
+            const primary = accentFlip ? theme.bloomB : theme.bloomA;
+            const secondary = accentFlip ? theme.bloomA : theme.bloomB;
+
+            const glow = ctx.createRadialGradient(centerX, centerY, dustRadius * 0.2, centerX, centerY, waveRadius * 1.55);
+            glow.addColorStop(0, rgba(primary, 0.14 + punch * 0.12));
+            glow.addColorStop(0.34, rgba(secondary, 0.1 + S.bassPulse * 0.1 + shimmer * 0.06));
+            glow.addColorStop(1, rgba(theme.backgroundLow, 0));
+            ctx.fillStyle = glow;
+            ctx.fillRect(0, 0, width, height);
+
+            for (let i = 0; i < 4; i += 1) {
+              ctx.strokeStyle = rgba(i % 2 === 0 ? primary : secondary, Math.max(0, 0.14 + punch * 0.12 - i * 0.026));
+              ctx.lineWidth = Math.max(1.2, 5 - i + punch * 4);
+              ctx.beginPath();
+              ctx.arc(centerX, centerY, waveRadius * (0.96 + i * 0.18 + punch * 0.05), 0, Math.PI * 2);
+              ctx.stroke();
+            }
+
+            const frameGradient = ctx.createRadialGradient(centerX, centerY, outerRadius * 0.46, centerX, centerY, outerRadius * 1.08);
+            frameGradient.addColorStop(0, rgba(theme.backgroundLow, 0.24));
+            frameGradient.addColorStop(0.72, rgba(theme.backgroundMid, 0.82));
+            frameGradient.addColorStop(1, rgba(theme.backgroundLow, 0.98));
+            ctx.fillStyle = frameGradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, outerRadius * 1.05, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = rgba(theme.ring, 0.18 + overall * 0.16 + punch * 0.1);
+            ctx.lineWidth = 14 + punch * 9;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.strokeStyle = rgba(theme.wave, 0.1 + S.bassPulse * 0.16 + punch * 0.15 + shimmer * 0.06);
+            ctx.lineWidth = 9 + S.bassPulse * 12 * sizeFactor + punch * 8;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, surroundRadius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            const coneGradient = ctx.createRadialGradient(centerX - outerRadius * 0.18, centerY - outerRadius * 0.2, dustRadius * 0.2, centerX, centerY, coneRadius);
+            coneGradient.addColorStop(0, rgba(theme.core, 0.26 + punch * 0.14 + shimmer * 0.05));
+            coneGradient.addColorStop(0.34, rgba(primary, 0.18 + S.bassPulse * 0.12 + mids * 0.08));
+            coneGradient.addColorStop(0.72, rgba(secondary, 0.14 + highs * 0.08 + punch * 0.08));
+            coneGradient.addColorStop(1, rgba(theme.backgroundMid, 0.92));
+            ctx.fillStyle = coneGradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, coneRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = rgba(theme.wave, 0.1 + punch * 0.2 + shimmer * 0.08);
+            ctx.lineWidth = 4 + punch * 8 + shimmer * 2;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, coneRadius * (0.96 + punch * 0.05), 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.fillStyle = rgba(theme.core, 0.18 + punch * 0.24 + S.bassPulse * 0.08 + shimmer * 0.05);
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, dustRadius, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = rgba(secondary, 0.06 + shimmer * 0.1);
+            ctx.lineWidth = 1.2 + highs * 1.4;
+            for (let i = 0; i < 8; i += 1) {
+              const angle = (Math.PI * 2 * i) / 8 + S.phase * (0.62 + shimmer * 0.08) + (accentFlip ? 0.2 : -0.2);
+              const inner = dustRadius * (1.18 + Math.sin(angle * 2 + S.phase) * 0.05);
+              const outer = coneRadius * (0.88 + Math.cos(angle * 3 - S.phase) * 0.05);
+              ctx.beginPath();
+              ctx.moveTo(centerX + Math.cos(angle) * inner, centerY + Math.sin(angle) * inner);
+              ctx.lineTo(centerX + Math.cos(angle) * outer, centerY + Math.sin(angle) * outer);
+              ctx.stroke();
+            }
+          }
+
+          drawDriver(topY, topPunch, 0.96, false);
+          drawDriver(bottomY, bottomPunch, 1.06, true);
+
+          ctx.strokeStyle = rgba(theme.wave, 0.08 + overall * 0.12 + mids * 0.08);
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 12) {
+            const normalized = x / width;
+            const y = height * 0.5 + Math.sin(normalized * 9 + S.phase * 1.7) * (10 + S.bassImpact * 22) + Math.cos(normalized * 5 - S.phase) * (6 + mids * 12 + shimmer * 8);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+        }
+        function renderWaterfallScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+
+          const rowCount = 78;
+          const bandCount = 92;
+          const nextRow = [];
+          for (let i = 0; i < bandCount; i += 1) {
+            const bucket = Math.min(S.spec.length - 1, Math.floor(i * (S.spec.length / bandCount)));
+            const value = S.spec[bucket];
+            const weighted = i < Math.floor(bandCount * 0.2)
+              ? Math.min(1, value * (1.14 + S.bassImpact * 0.45))
+              : value;
+            nextRow.push(weighted);
+          }
+
+          S.waterfallHistory.unshift(nextRow);
+          if (S.waterfallHistory.length > rowCount) {
+            S.waterfallHistory.length = rowCount;
+          }
+
+          const rowHeight = height / rowCount;
+          const columnWidth = width / bandCount;
+          for (let row = 0; row < S.waterfallHistory.length; row += 1) {
+            const rowData = S.waterfallHistory[row];
+            const y = row * rowHeight;
+            const fade = 1 - row / rowCount;
+            for (let i = 0; i < rowData.length; i += 1) {
+              const value = rowData[i];
+              const hue = theme.barsBaseHue - value * theme.barsHueRange + i * 0.72 + row * 0.35 + S.phase * 20;
+              const lightness = 18 + value * 54 + fade * 8;
+              const alpha = 0.06 + value * 0.56 * fade;
+              ctx.fillStyle = `hsla(${hue}, 94%, ${lightness}%, ${alpha})`;
+              ctx.fillRect(i * columnWidth, y, Math.ceil(columnWidth + 1), Math.ceil(rowHeight + 1));
+            }
+          }
+
+          const sweep = ctx.createLinearGradient(0, 0, width, height);
+          sweep.addColorStop(0, rgba(theme.backgroundLow, 0.12));
+          sweep.addColorStop(0.45, rgba(theme.bloomA, 0.04 + S.phraseContrast * 0.3));
+          sweep.addColorStop(1, rgba(theme.backgroundLow, 0.22));
+          ctx.fillStyle = sweep;
+          ctx.fillRect(0, 0, width, height);
+
+          ctx.strokeStyle = rgba(theme.wave, 0.05 + highs * 0.18 + S.hatEnergy * 0.12);
+          ctx.lineWidth = 1.4 + S.hatEnergy * 1.8;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 12) {
+            const normalized = x / width;
+            const y = height * 0.18 + Math.sin(normalized * 18 + S.phase * 3.4) * (10 + highs * 18 + S.phraseContrast * 24);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+
+          ctx.strokeStyle = rgba(theme.ring, 0.14 + overall * 0.26);
+          ctx.lineWidth = 2 + S.bassImpact * 3;
+          ctx.strokeRect(14, 14, width - 28, height - 28);
+        }
+        function renderLaserClubScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const centerX = width / 2;
+          const horizonY = height * 0.74;
+          const beamCount = 18;
+          const sweepEnergy = Math.max(highs * 0.9, mids * 0.6, S.hatEnergy * 0.85, S.snareImpact * 0.5);
+          const sweepPhase = Math.sin(S.phase * (1.4 + sweepEnergy * 0.5));
+          const inversePhase = Math.cos(S.phase * (1.15 + sweepEnergy * 0.38));
+          const fanWidth = width * (0.48 + mids * 0.24 + highs * 0.18 + sweepEnergy * 0.12);
+          const headX = centerX + sweepPhase * width * (0.18 + sweepEnergy * 0.1);
+          const headY = horizonY - height * (0.22 + highs * 0.08 + sweepEnergy * 0.06);
+          const headX2 = centerX - inversePhase * width * (0.16 + sweepEnergy * 0.08);
+          const headY2 = horizonY - height * (0.18 + mids * 0.06 + sweepEnergy * 0.05);
+
+          const haze = ctx.createRadialGradient(headX, headY, 24, headX, headY, width * 0.34);
+          haze.addColorStop(0, rgba(theme.core, 0.08 + sweepEnergy * 0.1));
+          haze.addColorStop(0.35, rgba(theme.bloomA, 0.08 + highs * 0.12));
+          haze.addColorStop(1, rgba(theme.backgroundLow, 0));
+          ctx.fillStyle = haze;
+          ctx.fillRect(0, 0, width, height);
+
+          const haze2 = ctx.createRadialGradient(headX2, headY2, 20, headX2, headY2, width * 0.28);
+          haze2.addColorStop(0, rgba(theme.core, 0.06 + sweepEnergy * 0.08));
+          haze2.addColorStop(0.32, rgba(theme.bloomB, 0.07 + mids * 0.12));
+          haze2.addColorStop(1, rgba(theme.backgroundLow, 0));
+          ctx.fillStyle = haze2;
+          ctx.fillRect(0, 0, width, height);
+
+          for (let i = 0; i < beamCount; i += 1) {
+            const spread = i / (beamCount - 1) - 0.5;
+            const angle = spread * (2.25 + mids * 0.95 + sweepEnergy * 0.4) + sweepPhase * 0.32 + Math.sin(S.phase * 2.1 + i * 0.5) * 0.08;
+            const crossAngle = spread * -(1.95 + highs * 0.7 + sweepEnergy * 0.3) + inversePhase * 0.28 + Math.cos(S.phase * 1.7 + i * 0.46) * 0.06;
+            const length = height * (0.62 + highs * 0.28 + sweepEnergy * 0.16 + (i % 3 === 0 ? S.snareImpact * 0.16 : 0));
+            const crossLength = height * (0.54 + mids * 0.2 + sweepEnergy * 0.14 + (i % 4 === 0 ? S.snareImpact * 0.12 : 0));
+            const endX = centerX + Math.sin(angle) * fanWidth;
+            const endY = horizonY - length;
+            const crossX = centerX + Math.sin(crossAngle) * fanWidth * 0.86;
+            const crossY = horizonY - crossLength;
+
+            const glow = ctx.createLinearGradient(centerX, horizonY, endX, endY);
+            glow.addColorStop(0, rgba(theme.core, 0.06 + S.bassImpact * 0.08));
+            glow.addColorStop(0.18, rgba(i % 2 === 0 ? theme.bloomA : theme.bloomB, 0.18 + sweepEnergy * 0.18 + S.snareImpact * 0.1));
+            glow.addColorStop(0.6, rgba(i % 2 === 0 ? theme.bloomA : theme.bloomB, 0.08 + highs * 0.14));
+            glow.addColorStop(1, rgba(theme.backgroundLow, 0));
+            ctx.strokeStyle = glow;
+            ctx.lineWidth = 8 + highs * 5 + sweepEnergy * 5 + (i % 4 === 0 ? S.snareImpact * 4 : 0);
+            ctx.beginPath();
+            ctx.moveTo(centerX, horizonY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            ctx.strokeStyle = rgba(theme.core, 0.14 + sweepEnergy * 0.18);
+            ctx.lineWidth = 1.5 + highs * 1.8;
+            ctx.beginPath();
+            ctx.moveTo(centerX, horizonY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
+            ctx.strokeStyle = rgba(theme.bloomB, 0.06 + sweepEnergy * 0.12 + highs * 0.08);
+            ctx.lineWidth = 4 + sweepEnergy * 3;
+            ctx.beginPath();
+            ctx.moveTo(centerX, horizonY);
+            ctx.lineTo(crossX, crossY);
+            ctx.stroke();
+          }
+
+          const sweepBeam = ctx.createLinearGradient(centerX, horizonY, headX, headY);
+          sweepBeam.addColorStop(0, rgba(theme.core, 0.08 + sweepEnergy * 0.08));
+          sweepBeam.addColorStop(0.2, rgba(theme.bloomB, 0.22 + sweepEnergy * 0.18));
+          sweepBeam.addColorStop(1, rgba(theme.backgroundLow, 0));
+          ctx.strokeStyle = sweepBeam;
+          ctx.lineWidth = 18 + sweepEnergy * 14;
+          ctx.beginPath();
+          ctx.moveTo(centerX, horizonY);
+          ctx.lineTo(headX, headY);
+          ctx.stroke();
+
+          const sweepBeam2 = ctx.createLinearGradient(centerX, horizonY, headX2, headY2);
+          sweepBeam2.addColorStop(0, rgba(theme.core, 0.07 + sweepEnergy * 0.07));
+          sweepBeam2.addColorStop(0.18, rgba(theme.bloomA, 0.18 + sweepEnergy * 0.16));
+          sweepBeam2.addColorStop(1, rgba(theme.backgroundLow, 0));
+          ctx.strokeStyle = sweepBeam2;
+          ctx.lineWidth = 12 + sweepEnergy * 10;
+          ctx.beginPath();
+          ctx.moveTo(centerX, horizonY);
+          ctx.lineTo(headX2, headY2);
+          ctx.stroke();
+
+          ctx.fillStyle = rgba(theme.bloomA, 0.08 + S.bassImpact * 0.16 + sweepEnergy * 0.08);
+          ctx.fillRect(0, horizonY, width, height - horizonY);
+
+          ctx.strokeStyle = rgba(theme.wave, 0.18 + highs * 0.24 + sweepEnergy * 0.1);
+          ctx.lineWidth = 2.4 + sweepEnergy * 1.8;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 10) {
+            const normalized = x / width;
+            const y = horizonY - 22 + Math.sin(normalized * 14 + S.phase * 2.8) * (10 + bass * 22 + S.snareImpact * 20) + Math.cos(normalized * 9 - S.phase * 1.6) * (4 + sweepEnergy * 12);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+
+          const strobeAlpha = Math.max(0, S.snareImpact * 0.18 + S.transitionFlash * 0.08);
+          if (strobeAlpha > 0.02) {
+            ctx.fillStyle = rgba(theme.core, Math.min(0.16, strobeAlpha));
+            ctx.fillRect(0, 0, width, height * (0.16 + sweepEnergy * 0.05));
+            ctx.strokeStyle = rgba(theme.wave, Math.min(0.24, strobeAlpha + 0.04));
+            ctx.lineWidth = 3 + S.snareImpact * 4;
+            for (let i = 0; i < 3; i += 1) {
+              const y = height * (0.12 + i * 0.1) + Math.sin(S.phase * 4 + i) * 8;
+              ctx.beginPath();
+              ctx.moveTo(0, y);
+              ctx.lineTo(width, y);
+              ctx.stroke();
+            }
+          }
+
+          for (let i = 0; i < 12; i += 1) {
+            const pulseWidth = width * (0.14 + i * 0.06 + S.bassImpact * 0.03 + sweepEnergy * 0.02);
+            ctx.strokeStyle = rgba(i % 2 === 0 ? theme.bloomB : theme.ring, Math.max(0, 0.08 + S.bassImpact * 0.08 + sweepEnergy * 0.06 - i * 0.006));
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.ellipse(centerX, horizonY, pulseWidth, 16 + i * 9 + S.bassImpact * 14, 0, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        }
+
+        function renderOrbitalScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const centerX = width / 2;
+          const centerY = height / 2;
+          const orbitCount = 5;
+
+          for (let i = 0; i < orbitCount; i += 1) {
+            const radiusX = Math.min(width, height) * (0.16 + i * 0.08 + mids * 0.03);
+            const radiusY = radiusX * (0.46 + i * 0.08 + highs * 0.08);
+            const rotation = S.phase * (0.35 + i * 0.08) + i * 0.44;
+            ctx.strokeStyle = rgba(i % 2 === 0 ? theme.ring : theme.wave, 0.08 + overall * 0.12 + i * 0.01);
+            ctx.lineWidth = 1.5 + (i === 0 ? S.bassImpact * 4 : 0);
+            ctx.beginPath();
+            ctx.ellipse(centerX, centerY, radiusX, radiusY, rotation, 0, Math.PI * 2);
+            ctx.stroke();
+
+            const nodeCount = 6 + i * 2;
+            for (let j = 0; j < nodeCount; j += 1) {
+              const angle = (Math.PI * 2 * j) / nodeCount + S.phase * (0.8 + i * 0.12);
+              const x = centerX + Math.cos(angle) * radiusX * Math.cos(rotation) - Math.sin(angle) * radiusY * Math.sin(rotation);
+              const y = centerY + Math.cos(angle) * radiusX * Math.sin(rotation) + Math.sin(angle) * radiusY * Math.cos(rotation);
+              const size = 2 + highs * 2.4 + (j % 3 === 0 ? S.snareImpact * 2.2 : 0);
+              ctx.fillStyle = rgba(j % 2 === 0 ? theme.bloomA : theme.bloomB, 0.22 + overall * 0.26);
+              ctx.beginPath();
+              ctx.arc(x, y, size, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+
+          ctx.strokeStyle = rgba(theme.bloomB, 0.08 + highs * 0.14);
+          ctx.lineWidth = 1.4;
+          for (let i = 0; i < 18; i += 1) {
+            const angle = (Math.PI * 2 * i) / 18 + S.phase * 0.42;
+            const inner = 22 + S.bassImpact * 16;
+            const outer = Math.min(width, height) * (0.28 + highs * 0.06 + (i % 4 === 0 ? S.snareImpact * 0.08 : 0));
+            ctx.beginPath();
+            ctx.moveTo(centerX + Math.cos(angle) * inner, centerY + Math.sin(angle) * inner);
+            ctx.lineTo(centerX + Math.cos(angle) * outer, centerY + Math.sin(angle) * outer);
+            ctx.stroke();
+          }
+
+          ctx.fillStyle = rgba(theme.core, 0.12 + S.bassPulse * 0.12 + S.bassImpact * 0.1);
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, 18 + S.bassPulse * 24 + S.bassImpact * 12, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        function renderCityBarsScene(width, height, theme, bass, mids, highs, overall) {
+          drawBloom(width, height, theme, bass, mids);
+          const columns = 54;
+          const spacing = width / columns;
+          const horizon = height * (0.62 + Math.sin(S.phase * 0.8) * 0.02);
+
+          for (let i = 0; i < columns; i += 1) {
+            const bucket = Math.min(S.spec.length - 1, Math.floor(i * (S.spec.length / columns)));
+            const value = S.spec[bucket];
+            const x = i * spacing;
+            const sizeFactor = S.size;
+            const skylineBoost = i < Math.floor(columns * 0.28) ? 1 + S.bassPulse * 0.95 * sizeFactor + S.bassImpact * 1.05 * sizeFactor : 1 + S.bassPulse * 0.18 * sizeFactor;
+            const buildingHeight = 20 + value * height * 0.5 * skylineBoost;
+            const widthScale = (i % 3 === 0 ? 1.2 : 0.82) * spacing;
+            const hue = theme.barsBaseHue - value * theme.barsHueRange + Math.sin(i * 0.4 + S.phase) * 12;
+            ctx.fillStyle = `hsla(${hue}, 88%, ${30 + value * 30}%, ${0.38 + value * 0.46})`;
+            ctx.fillRect(x, horizon - buildingHeight, Math.max(5, widthScale - 4), buildingHeight + height);
+
+            ctx.fillStyle = `hsla(${hue}, 96%, ${72 + value * 12}%, ${0.18 + mids * 0.18})`;
+            for (let row = 0; row < 8; row += 1) {
+              const windowY = horizon - 18 - row * 18;
+              if (windowY < horizon - buildingHeight + 14) {
+                break;
+              }
+              ctx.fillRect(x + 6, windowY, 4, 8);
+              ctx.fillRect(x + Math.max(10, widthScale - 12), windowY, 4, 8);
+            }
+          }
+
+          ctx.strokeStyle = rgba(theme.wave, 0.28 + overall * 0.22);
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let x = 0; x <= width; x += 12) {
+            const normalized = x / width;
+            const y = horizon - 24 + Math.sin(normalized * 10 + S.phase * 2.4) * (10 + bass * 28) + Math.cos(normalized * 16 - S.phase * 2.1) * (6 + highs * 16);
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+
+          ctx.fillStyle = rgba(theme.bloomA, 0.12 + bass * 0.16);
+          ctx.fillRect(0, horizon + 8, width, height - horizon);
+        }
+
+        const scenes = {
+          halo: ["Halo Ring", renderHaloScene],
+          tunnel: ["Neon Tunnel", renderTunnelScene],
+          constellation: ["Constellation", renderConstellationScene],
+          equalizer: ["Prism Bars", renderEqualizerScene],
+          radialBars: ["Radar Bars", renderRadialBarsScene],
+          cityBars: ["City Bars", renderCityBarsScene],
+          subwoofer: ["Subwoofer", renderSubwooferScene],
+          waterfall: ["Waterfall Spectrum", renderWaterfallScene],
+          laserClub: ["Laser Club", renderLaserClubScene],
+          orbital: ["Orbital Lines", renderOrbitalScene],
+          dualSub: ["Dual Sub Stack", renderDualSubScene],
+        };
+
+        // bands: { bass, mids, highs, snare, overall, spec, kick, clap, size } all roughly 0..1.
+        // kick / clap are one-frame impulses from Live's beat clock, since 10 Hz meters are too
+        // coarse to find transients on their own.
+        function draw(context, width, height, sceneKey, themeKey, b) {
+          ctx = context;
+          S.theme = themes[themeKey] || themes.aurora;
+          S.size = b.size;
+          S.spec = b.spec;
+          const { bass, mids, highs, snare, overall } = b;
+          const theme = S.theme;
+
+          const bassTarget = Math.min(1.9, bass * 1.55 + Math.max(0, bass - overall * 0.74) * 3.8);
+          S.bassPulse += (bassTarget - S.bassPulse) * (bassTarget > S.bassPulse ? 0.34 : 0.12);
+          const impactTarget = Math.min(1.6, b.kick * (0.5 + bass * 1.4));
+          S.bassImpact += (impactTarget - S.bassImpact) * (impactTarget > S.bassImpact ? 0.55 : 0.18);
+          const snareTarget = Math.min(1.35, b.clap * (0.3 + snare * 1.3));
+          S.snareImpact += (snareTarget - S.snareImpact) * (snareTarget > S.snareImpact ? 0.48 : 0.2);
+          const hatTarget = Math.max(0, highs * 1.2 - bass * 0.16);
+          S.hatEnergy += (hatTarget - S.hatEnergy) * (hatTarget > S.hatEnergy ? 0.24 : 0.1);
+          S.phraseContrast += (Math.abs(bass - mids) * 0.3 - S.phraseContrast) * 0.05;
+          S.transitionFlash += (0 - S.transitionFlash) * 0.12;
+          if (impactTarget > 0.78) S.transitionFlash = Math.max(S.transitionFlash, Math.min(0.18, impactTarget * 0.12));
+          if (snareTarget > 0.34) S.transitionFlash = Math.max(S.transitionFlash, Math.min(0.22, snareTarget * 0.16));
+          S.phase += 0.01 + overall * 0.045 + S.bassPulse * 0.008 + S.bassImpact * 0.012 + S.hatEnergy * 0.008;
+
+          clearBackground(width, height, theme, bass, mids, highs);
+          drawBassAccent(width, height, theme, bass, overall);
+          (scenes[sceneKey] || scenes.halo)[1](width, height, theme, bass, mids, highs, overall);
+          drawTrebleAccents(width, height, theme);
+          drawTransitionOverlay(width, height);
+        }
+
+        function flash(level = 1) {
+          S.transitionFlash = Math.max(S.transitionFlash, Math.min(1, 0.24 + level * 0.36));
+        }
+
+        window.PulseScenes = { themes, scenes, draw, flash, phase: () => S.phase };
+      })();
+    </script>
+    <script>
       // =============================================
       // LIVE STATE (PulseBridge event stream)
       // Snapshot on connect, then kept current by Server-Sent Events from /live/events.
@@ -4308,7 +5444,107 @@
           shown: { master: [0, 0], tracks: [] },
           peak: [{ v: 0, t: 0 }, { v: 0, t: 0 }],
           flash: 0, lastBeat: null, rowsKey: "",
+          kick: 0, clap: 0, bars: 0, spec: new Float32Array(128),
+          prefs: { scene: "halo", theme: "aurora", auto: 0, intensity: 1 },
         };
+
+        // Scene, theme, auto-change and intensity are remembered per browser.
+        const VIZ_PREFS_KEY = "pulse-studio-viz-v1";
+        try { Object.assign(viz.prefs, JSON.parse(localStorage.getItem(VIZ_PREFS_KEY) || "{}")); } catch (e) { /* ignore */ }
+        function saveVizPrefs() {
+          try { localStorage.setItem(VIZ_PREFS_KEY, JSON.stringify(viz.prefs)); } catch (e) { /* ignore */ }
+        }
+
+        function initVizControls() {
+          const PS = window.PulseScenes;
+          const sceneSel = $("vizScene"), themeSel = $("vizTheme");
+          if (!PS || !sceneSel || !themeSel) return;
+          sceneSel.innerHTML = Object.entries(PS.scenes).map(([k, [name]]) => `<option value="${k}">${escapeHtml(name)}</option>`).join("")
+            + `<option value="meters">Meters</option>`;
+          themeSel.innerHTML = Object.entries(PS.themes).map(([k, t]) => `<option value="${k}">${escapeHtml(t.name)}</option>`).join("");
+          if (!sceneSel.querySelector(`option[value="${viz.prefs.scene}"]`)) viz.prefs.scene = "halo";
+          if (!PS.themes[viz.prefs.theme]) viz.prefs.theme = "aurora";
+          sceneSel.value = viz.prefs.scene;
+          themeSel.value = viz.prefs.theme;
+          $("vizAuto").value = String(viz.prefs.auto);
+          $("vizIntensity").value = String(viz.prefs.intensity);
+          const bind = (id, key, parse = (v) => v) => $(id).addEventListener("input", (e) => {
+            viz.prefs[key] = parse(e.target.value);
+            if (key === "scene" || key === "theme") PS.flash(1);
+            saveVizPrefs();
+          });
+          bind("vizScene", "scene");
+          bind("vizTheme", "theme");
+          bind("vizAuto", "auto", Number);
+          bind("vizIntensity", "intensity", Number);
+          $("vizFullscreen").addEventListener("click", () => {
+            const stage = $("vizCanvas").parentElement;
+            if (document.fullscreenElement) document.exitFullscreen();
+            else stage.requestFullscreen?.();
+          });
+        }
+
+        function vizAutoAdvance() {
+          // Called on each downbeat while Live plays: new scene (and theme) every N bars.
+          const PS = window.PulseScenes;
+          viz.bars += 1;
+          if (!PS || !viz.prefs.auto || viz.bars % viz.prefs.auto !== 0) return;
+          const pick = (keys, cur) => { const pool = keys.filter((k) => k !== cur); return pool[Math.floor(Math.random() * pool.length)]; };
+          viz.prefs.scene = pick(Object.keys(PS.scenes), viz.prefs.scene);
+          viz.prefs.theme = pick(Object.keys(PS.themes), viz.prefs.theme);
+          $("vizScene").value = viz.prefs.scene;
+          $("vizTheme").value = viz.prefs.theme;
+          PS.flash(1.2);
+          saveVizPrefs();
+        }
+
+        // Live gives per-track levels, not a spectrum, so tracks are sorted into low / mid / high
+        // by name and instrument, and each one becomes a bump in its part of a synthetic 128-bin
+        // spectrum. Instruments count because Pulse names its tracks PS-TRK-01.. regardless of role.
+        const VIZ_LOW = /kick|\bbd\b|bass|\bsub\b|808|\bkit\b|drum/i;
+        const VIZ_HIGH = /hat|\bhh\b|cym|ride|crash|shaker|tamb|perc|\btop/i;
+        const VIZ_SNARE = /snare|clap|\bsd\b|rim/i;
+        const VIZ_REGIONS = { low: [0, 24], mid: [24, 72], high: [72, 128] };
+
+        function vizBands() {
+          const gain = viz.prefs.intensity * 0.8;
+          const master = Math.max(viz.shown.master[0], viz.shown.master[1]);
+          const groups = { low: [], mid: [], high: [] };
+          let snare = null;
+          live.tracks.forEach((t, i) => {
+            const v = viz.shown.tracks[i] || 0;
+            const name = [t.name || "", ...(t.devices || [])].join(" ");
+            groups[VIZ_HIGH.test(name) ? "high" : VIZ_LOW.test(name) ? "low" : "mid"].push(v);
+            if (VIZ_SNARE.test(name)) snare = Math.max(snare || 0, v);
+          });
+          const peak = (a, fallback) => (a.length ? Math.max(...a) : fallback);
+          const clamp = (v) => Math.min(1, Math.max(0, v * gain));
+          const bass = clamp(peak(groups.low, master * 0.8));
+          const mids = clamp(peak(groups.mid, master * 0.7));
+          const highs = clamp(peak(groups.high, master * 0.5));
+
+          const spec = viz.spec, ph = window.PulseScenes.phase();
+          for (let i = 0; i < spec.length; i += 1) {
+            spec[i] = master * 0.3 * (1 - (i / spec.length) * 0.6) * (0.7 + 0.3 * Math.sin(i * 0.37 + ph * 2));
+          }
+          Object.entries(VIZ_REGIONS).forEach(([role, [a, b]]) => {
+            const levels = groups[role].length ? groups[role] : [{ low: bass, mid: mids, high: highs }[role] / gain];
+            const span = (b - a) / levels.length;
+            levels.forEach((v, k) => {
+              const c = a + (k + 0.5) * span, wid = span * 0.6 + 3;
+              for (let i = a; i < b; i += 1) {
+                const bump = v * Math.exp(-(((i - c) / wid) ** 2)) * (0.85 + 0.15 * Math.sin(i * 0.7 + ph * 3 + k));
+                if (bump > spec[i]) spec[i] = bump;
+              }
+            });
+          });
+          for (let i = 0; i < spec.length; i += 1) spec[i] = clamp(spec[i]);
+
+          return {
+            bass, mids, highs, snare: snare === null ? mids : clamp(snare), overall: clamp(master),
+            spec, kick: viz.kick, clap: viz.clap, size: viz.prefs.intensity,
+          };
+        }
 
         function syncMeterStream() {
           const want = viz.active && !document.hidden && connected();
@@ -4383,54 +5619,65 @@
 
             // Beat flash (bigger on the downbeat).
             const b = live.song && live.song.is_playing ? live.beat : null;
-            if (b && b.beat !== viz.lastBeat) { viz.lastBeat = b.beat; viz.flash = b.beat_in_bar === 0 ? 1 : 0.6; }
+            viz.kick = viz.clap = 0;
+            if (b && b.beat !== viz.lastBeat) {
+              viz.lastBeat = b.beat;
+              viz.flash = b.beat_in_bar === 0 ? 1 : 0.6;
+              viz.kick = 1;
+              viz.clap = b.beat_in_bar % 2 === 1 ? 1 : 0;
+              if (b.beat_in_bar === 0) vizAutoAdvance();
+            }
             viz.flash *= 0.92;
 
             const level = Math.max(viz.shown.master[0], viz.shown.master[1]);
             const cx = w / 2, cy = h / 2, r0 = Math.min(w, h) * 0.16;
 
-            // Glow that swells with the master level.
-            const r = r0 * (1 + level * 1.1);
-            const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.8);
-            g.addColorStop(0, accent);
-            g.addColorStop(0.45, accent + "55");
-            g.addColorStop(1, "transparent");
-            ctx.globalAlpha = 0.25 + level * 0.75;
-            ctx.fillStyle = g;
-            ctx.beginPath(); ctx.arc(cx, cy, r * 1.8, 0, Math.PI * 2); ctx.fill();
-            ctx.globalAlpha = 1;
-
-            // Beat ring expanding outward.
-            if (viz.flash > 0.02) {
-              ctx.strokeStyle = good;
-              ctx.globalAlpha = viz.flash;
-              ctx.lineWidth = 3;
-              ctx.beginPath(); ctx.arc(cx, cy, r0 * (1.2 + (1 - viz.flash) * 1.6), 0, Math.PI * 2); ctx.stroke();
+            if (viz.prefs.scene !== "meters" && window.PulseScenes) {
+              window.PulseScenes.draw(ctx, w, h, viz.prefs.scene, viz.prefs.theme, vizBands());
+            } else {
+              // Glow that swells with the master level.
+              const r = r0 * (1 + level * 1.1);
+              const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.8);
+              g.addColorStop(0, accent);
+              g.addColorStop(0.45, accent + "55");
+              g.addColorStop(1, "transparent");
+              ctx.globalAlpha = 0.25 + level * 0.75;
+              ctx.fillStyle = g;
+              ctx.beginPath(); ctx.arc(cx, cy, r * 1.8, 0, Math.PI * 2); ctx.fill();
               ctx.globalAlpha = 1;
+
+              // Beat ring expanding outward.
+              if (viz.flash > 0.02) {
+                ctx.strokeStyle = good;
+                ctx.globalAlpha = viz.flash;
+                ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.arc(cx, cy, r0 * (1.2 + (1 - viz.flash) * 1.6), 0, Math.PI * 2); ctx.stroke();
+                ctx.globalAlpha = 1;
+              }
+
+              // Core.
+              ctx.fillStyle = accent;
+              ctx.beginPath(); ctx.arc(cx, cy, r0 * (0.35 + level * 0.25), 0, Math.PI * 2); ctx.fill();
+
+              // Master L/R bars with peak hold, at both edges.
+              const barW = 14, pad = 24, top = 24, bh = h - 48;
+              [["L", pad], ["R", w - pad - barW]].forEach(([label, x], c) => {
+                const v = viz.shown.master[c];
+                ctx.fillStyle = "rgba(255,255,255,0.05)";
+                ctx.fillRect(x, top, barW, bh);
+                ctx.fillStyle = v > 0.92 ? hot : good;
+                ctx.fillRect(x, top + bh * (1 - v), barW, bh * v);
+                ctx.fillStyle = viz.peak[c].v > 0.92 ? hot : "#fff";
+                ctx.fillRect(x, top + bh * (1 - viz.peak[c].v) - 1, barW, 2);
+                ctx.fillStyle = muted;
+                ctx.font = "11px Inter, sans-serif";
+                ctx.textAlign = "center";
+                ctx.fillText(label, x + barW / 2, h - 8);
+              });
             }
 
-            // Core.
-            ctx.fillStyle = accent;
-            ctx.beginPath(); ctx.arc(cx, cy, r0 * (0.35 + level * 0.25), 0, Math.PI * 2); ctx.fill();
-
-            // Master L/R bars with peak hold, at both edges.
-            const barW = 14, pad = 24, top = 24, bh = h - 48;
-            [["L", pad], ["R", w - pad - barW]].forEach(([label, x], c) => {
-              const v = viz.shown.master[c];
-              ctx.fillStyle = "rgba(255,255,255,0.05)";
-              ctx.fillRect(x, top, barW, bh);
-              ctx.fillStyle = v > 0.92 ? hot : good;
-              ctx.fillRect(x, top + bh * (1 - v), barW, bh * v);
-              ctx.fillStyle = viz.peak[c].v > 0.92 ? hot : "#fff";
-              ctx.fillRect(x, top + bh * (1 - viz.peak[c].v) - 1, barW, 2);
-              ctx.fillStyle = muted;
-              ctx.font = "11px Inter, sans-serif";
-              ctx.textAlign = "center";
-              ctx.fillText(label, x + barW / 2, h - 8);
-            });
-
             if (connected() && level === 0 && !(live.song && live.song.is_playing)) {
-              ctx.fillStyle = muted;
+              ctx.fillStyle = viz.prefs.scene === "meters" ? muted : "rgba(237, 244, 255, 0.85)";
               ctx.font = "13px Inter, sans-serif";
               ctx.textAlign = "center";
               ctx.fillText("Press play in Live", cx, cy + r0 * 2.2);
@@ -4462,6 +5709,7 @@
         });
         $("refreshStatus")?.addEventListener("click", () => refreshBridge().then(refreshSnapshot));
 
+        initVizControls();
         renderAll();
         refreshBridge();  // detects an out-of-date server even if the event stream never opens
         connectEvents();
