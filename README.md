@@ -123,7 +123,7 @@ Leave the `PS-TRK-…` track names as they are: Pulse uses them to recognise tra
 | **Compose** | Generate drum/bass pairs, chords and full arrangements (Intro, Main, Break, Drop, Outro) into Session View. A full track fills seven tracks (Drums, Bass, Perc, Stabs, FX, Chords and Pad) and adds a reverb and a delay return with sends set for each part. Returns already in your set are reused, and sends you've moved by hand are left alone. **Voice** generates spoken/sung lines and **Send to Live** puts them on a `PS-VOX` audio track. |
 | **Styles** | Browse and edit the style knowledge base (`knowledge/styles.json`): tempo, kit, bass and harmony rules. **Rebuild browser index** rescans Live's browser so Pulse can pick presets from your Library. |
 | **Samples** | Import WAVs (optionally trimming silence), search Live's library, and send a sample to an audio clip, a Simpler or a Drum Rack pad. Imported files live in `samples/` (git-ignored). |
-| **Perform** | Built for playing live. A pinned deck shows play/stop, position, tempo (with nudge) and what is playing now and next, plus **Autopilot** (plays the Compose arrangement until you launch a scene yourself) and **Stop clips**. Below it: scene pads named after your scenes, part toggles that mute each track with a level meter, moves (Wash & Drop, Breakdown → Drop, Delay Throw, and Fade Out, which you press twice), and vox pads. Moves wait for Live's grid: they start on the next bar (Delay Throw on the next beat), so press a little ahead. Keyboard: Space play/stop, 1–0 scenes, Q–P parts, A–K vox pads, B wash, N breakdown (press again to drop early), V delay throw, [ and ] tempo. Track knobs and the recorder are in the collapsed sections at the bottom. |
+| **Perform** | Built for playing live. A pinned deck shows play/stop, position, tempo (with nudge) and what is playing now and next, plus **Autopilot** (plays the Compose arrangement until you launch a scene yourself) and **Stop clips**. Below it: scene pads named after your scenes, part toggles that mute each track with a level meter, moves (Wash & Drop, Breakdown → Drop, Delay Throw, Reverb Tail Out, Fill → Next, and Fade Out, which you press twice), and vox pads. Moves wait for Live's grid: they start on the next bar (Delay Throw on the next beat), so press a little ahead. Tail Out and Fill end by launching the next scene: the queued one, the autopilot's next, or the one after what's playing. Keep Live's launch quantization at 1 Bar so it lands on time. Keyboard: Space play/stop, 1–0 scenes, Q–P parts, A–K vox pads, B wash, N breakdown (press again to drop early), V delay throw, C tail out, X fill, [ and ] tempo. Track knobs and the recorder are in the collapsed sections at the bottom. |
 | **Live Overview** | Transport, tempo, key and the tracks, devices and playing clips in your set, updated live. |
 | **Visualizer** | Animated scenes driven by Live's output meters (no microphone or audio routing). Pick a scene and theme, set it to change every 4/8/16 bars, or go fullscreen. |
 | **System** | AI provider and model, connection status, diagnostics, browser index tools and logs. |
@@ -183,11 +183,11 @@ python -m pytest tests -q
 | `ableton_web_poc_server.py` | The FastAPI server: generation, Live control, voices, samples, event stream. |
 | `pulse_studio.html` | The whole web app (single file). |
 | `pulse_bridge/` | The PulseBridge Remote Script, installer and smoke test. Protocol and commands: [pulse_bridge/README.md](pulse_bridge/README.md). |
-| `pulse_bridge_client.py`, `live_link.py` | The server's connections to PulseBridge and AbletonOSC. |
+| `pulse_bridge_client.py`, `live_link.py`, `ableton_track_creator.py` | The server's connections to PulseBridge and AbletonOSC. |
+| `instrument_palette.py` | Picks a matching set of instruments per role from the browser index. |
 | `knowledge/styles.json` | Style definitions: tempo, grooves, kits, bass and harmony rules. |
 | `knowledge/ableton_browser_index.json` | Cached index of Live's browser, rebuilt from the Styles or System view. |
 | `pulse_canvas/` | The original standalone visualizer (captures browser/system audio), served at `/pulse_canvas/`. |
 | `tests/` | pytest suite. |
-| `ableton_*.py`, `ableton_web_poc.html`, `volca_drum_v2.html` | Early experiments and prototypes, kept for reference. |
 
 With the server running, interactive API docs are at <http://127.0.0.1:8005/docs>.

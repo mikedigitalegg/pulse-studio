@@ -2196,33 +2196,6 @@ MACRO_PARAM_BY_MACRO = {
     8: 8,
 }
 
-BASS_RACK_TRACK_INDEX = 1
-BASS_RACK_DEVICE_INDEX = 0
-DRUMS_FX_RACK_TRACK_INDEX = 0
-DRUMS_FX_RACK_DEVICE_INDEX = 0
-
-BASS_KNOB_TO_MACRO = {
-    "CUTOFF": 1,
-    "RESONANCE": 2,
-    "ENV_AMOUNT": 3,
-    "DECAY": 4,
-    "ACCENT": 5,
-    "DRIVE": 6,
-    "LOW_EQ": 7,
-    "SPACE": 8,
-}
-
-DRUMS_KNOB_TO_MACRO = {
-    "FILTER": 1,
-    "RESONANCE": 2,
-    "DRIVE": 3,
-    "TRANSIENT": 4,
-    "LOW_CUT": 5,
-    "PRESENCE": 6,
-    "SPACE": 7,
-    "HAT_BRIGHT": 8,
-}
-
 MACRO_VALUE_MAX = 127.0
 
 # The UI is served by this server, so it never needs cross-origin access.
@@ -2331,14 +2304,6 @@ class LaunchStyleRequest(BaseModel):
     style: str
 
 
-class LoadStyleRequest(BaseModel):
-    style: str
-    launch: bool = True
-    load_kit: bool = True
-    launch_once: bool = False
-    once_bars: int = 1
-
-
 class LoadDeviceRequest(BaseModel):
     track_index: int
     device_name: str
@@ -2408,47 +2373,6 @@ class SetMacroRequest(BaseModel):
     value: float
 
 
-class SetNamedKnobRequest(BaseModel):
-    name: str
-    value: float
-
-
-class GenerateAIPatternRequest(BaseModel):
-    style: str
-    bars: int = 1
-    track_index: int = VOLCA_DRUM_TRACK_INDEX
-    clip_slot_index: int = 0
-    prompt: str | None = None
-    temperature: float = 0.7
-
-
-class GenerateAIPercPatternRequest(BaseModel):
-    style: str
-    bars: int = 1
-    track_index: int = PERC_TRACK_INDEX
-    clip_slot_index: int = 0
-    prompt: str | None = None
-    temperature: float = 0.7
-
-
-class GenerateAIStabsPatternRequest(BaseModel):
-    style: str
-    bars: int = 1
-    track_index: int = STABS_TRACK_INDEX
-    clip_slot_index: int = 0
-    prompt: str | None = None
-    temperature: float = 0.7
-
-
-class GenerateAIFxPatternRequest(BaseModel):
-    style: str
-    bars: int = 1
-    track_index: int = FX_TRACK_INDEX
-    clip_slot_index: int = 0
-    prompt: str | None = None
-    temperature: float = 0.7
-
-
 class GenerateAIPairRequest(BaseModel):
     style: str
     bars: int = 1
@@ -2469,29 +2393,6 @@ class GenerateAIPairRequest(BaseModel):
     include_stabs: bool = True
     include_fx: bool = False
     bass_root_midi: int = 43
-    prompt: str | None = None
-    temperature: float = 0.7
-
-
-class TweakBassRequest(BaseModel):
-    track_index: int
-    clip_slot_index: int
-    transpose: int = 0
-    velocity_scale: float = 1.0
-
-
-class TweakDrumsRequest(BaseModel):
-    track_index: int
-    clip_slot_index: int
-    velocity_scale: float = 1.0
-
-
-class GenerateAIBasslineRequest(BaseModel):
-    style: str
-    bars: int = 1
-    track_index: int = 1
-    clip_slot_index: int = 0
-    root_midi: int = 43
     prompt: str | None = None
     temperature: float = 0.7
 
@@ -2524,10 +2425,6 @@ class ExportFullTrackRequest(BaseModel):
 
 
 class ApplyFullTrackExportRequest(BaseModel):
-    export: dict
-
-
-class ApplyPairExportRequest(BaseModel):
     export: dict
 
 
@@ -3618,22 +3515,6 @@ def root():
     return RedirectResponse(url="/pulse_studio.html")
 
 
-@app.get("/ableton_web_poc.html")
-def poc_ui():
-    return FileResponse(
-        os.path.join(APP_DIR, "ableton_web_poc.html"),
-        headers={"Cache-Control": "no-store"},
-    )
-
-
-@app.get("/volca_drum_v2.html")
-def volca_drum_v2_ui():
-    return FileResponse(
-        os.path.join(APP_DIR, "volca_drum_v2.html"),
-        headers={"Cache-Control": "no-store"},
-    )
-
-
 @app.get("/pulse_studio.html")
 def pulse_studio_ui():
     return FileResponse(
@@ -4377,49 +4258,6 @@ def launch_style(req: LaunchStyleRequest):
     return {"ok": True, "style": style, "track_index": VOLCA_DRUM_TRACK_INDEX, "clip_slot_index": slot}
 
 
-@app.post("/styles/load")
-def load_style(req: LoadStyleRequest):
-    style = (req.style or "").strip().lower()
-    if style not in STYLE_CONFIG:
-        return {"ok": False, "error": "unknown_style", "available": sorted(STYLE_CONFIG.keys())}
-
-    cfg = STYLE_CONFIG[style]
-    tempo = float(cfg["tempo"])
-    clip_slot = int(cfg["clip_slot"])
-    kit = str(cfg["kit"])
-
-    ctrl.set_tempo(tempo)
-
-    if req.load_kit:
-        ctrl.load_device(VOLCA_DRUM_TRACK_INDEX, kit)
-
-    if req.launch:
-        ctrl.fire_clip(VOLCA_DRUM_TRACK_INDEX, clip_slot)
-
-        if bool(getattr(req, "launch_once", False)):
-            try:
-                bars = int(getattr(req, "once_bars", 1) or 1)
-            except Exception:
-                bars = 1
-            _schedule_stop_clip_after_bars(
-                track_index=VOLCA_DRUM_TRACK_INDEX,
-                clip_slot_index=clip_slot,
-                bars=bars,
-                bpm_default=float(cfg.get("tempo") or 140.0),
-            )
-
-    return {
-        "ok": True,
-        "style": style,
-        "tempo": tempo,
-        "track_index": VOLCA_DRUM_TRACK_INDEX,
-        "clip_slot_index": clip_slot,
-        "kit": kit,
-        "launch": req.launch,
-        "load_kit": req.load_kit,
-    }
-
-
 def _style_root_midi(style: str, fallback: int = 43) -> int:
     s = (style or "").strip().lower()
     try:
@@ -4664,81 +4502,6 @@ async def generate_ai_pair(req: GenerateAIPairRequest):
         "bars": int(req.bars),
         "clip_bars": parts["clip_bars"],
     }
-
-
-@app.post("/pair/apply_export")
-def apply_pair_export(req: ApplyPairExportRequest):
-    export = req.export
-    if not isinstance(export, dict) or export.get("format") != "ableton_pair_export":
-        return {"ok": False, "error": "invalid_export_format"}
-
-    payload = export.get("payload")
-    if not isinstance(payload, dict) or not payload.get("ok"):
-        return {"ok": False, "error": "invalid_payload"}
-
-    applied = {}
-
-    drums = payload.get("drums")
-    if isinstance(drums, dict) and bool(drums.get("included")) and isinstance(drums.get("pattern"), dict):
-        track = int(drums.get("track_index", 0))
-        slot = int(drums.get("clip_slot_index", 0))
-        bars = int(drums["pattern"].get("bars", 1) or 1)
-        valid, meta = _validate_pattern(drums["pattern"], bars)
-        if not meta.get("ok"):
-            return {"ok": False, "error": "invalid_drums", "detail": meta}
-        _write_pattern_to_ableton(track, slot, valid)
-        GEN_CACHE.set_drums(track, slot, valid)
-        applied["drums"] = {"track_index": track, "clip_slot_index": slot}
-
-    bass = payload.get("bass")
-    if isinstance(bass, dict) and bool(bass.get("included")) and isinstance(bass.get("bassline"), dict):
-        track = int(bass.get("track_index", 1))
-        slot = int(bass.get("clip_slot_index", 0))
-        bars = int(bass["bassline"].get("bars", 1) or 1)
-        valid, meta = _validate_bassline(bass["bassline"], bars)
-        if not meta.get("ok"):
-            return {"ok": False, "error": "invalid_bass", "detail": meta}
-        _write_bassline_to_ableton(track, slot, valid)
-        GEN_CACHE.set_bass(track, slot, valid)
-        applied["bass"] = {"track_index": track, "clip_slot_index": slot}
-
-    perc = payload.get("perc")
-    if isinstance(perc, dict) and bool(perc.get("included")) and isinstance(perc.get("pattern"), dict):
-        track = int(perc.get("track_index", PERC_TRACK_INDEX))
-        slot = int(perc.get("clip_slot_index", 0))
-        bars = int(perc["pattern"].get("bars", 1) or 1)
-        valid, meta = _validate_pattern(perc["pattern"], bars)
-        if not meta.get("ok"):
-            return {"ok": False, "error": "invalid_perc", "detail": meta}
-        _write_pattern_to_ableton(track, slot, valid)
-        GEN_CACHE.set_perc(track, slot, valid)
-        applied["perc"] = {"track_index": track, "clip_slot_index": slot}
-
-    stabs = payload.get("stabs")
-    if isinstance(stabs, dict) and bool(stabs.get("included")) and isinstance(stabs.get("pattern"), dict):
-        track = int(stabs.get("track_index", STABS_TRACK_INDEX))
-        slot = int(stabs.get("clip_slot_index", 0))
-        bars = int(stabs["pattern"].get("bars", 1) or 1)
-        valid, meta = _validate_pattern(stabs["pattern"], bars)
-        if not meta.get("ok"):
-            return {"ok": False, "error": "invalid_stabs", "detail": meta}
-        _write_pattern_to_ableton(track, slot, valid)
-        GEN_CACHE.set_stabs(track, slot, valid)
-        applied["stabs"] = {"track_index": track, "clip_slot_index": slot}
-
-    fx = payload.get("fx")
-    if isinstance(fx, dict) and bool(fx.get("included")) and isinstance(fx.get("pattern"), dict):
-        track = int(fx.get("track_index", FX_TRACK_INDEX))
-        slot = int(fx.get("clip_slot_index", 0))
-        bars = int(fx["pattern"].get("bars", 1) or 1)
-        valid, meta = _validate_pattern(fx["pattern"], bars)
-        if not meta.get("ok"):
-            return {"ok": False, "error": "invalid_fx", "detail": meta}
-        _write_pattern_to_ableton(track, slot, valid)
-        GEN_CACHE.set_fx(track, slot, valid)
-        applied["fx"] = {"track_index": track, "clip_slot_index": slot}
-
-    return {"ok": True, "applied": applied}
 
 
 def _build_suggested_arrangement(style: str) -> list[dict]:
@@ -5463,28 +5226,6 @@ def get_cached_scene(slot: int = 0):
             "fx": GEN_CACHE.get_fx(4, s),
         },
     }
-
-
-@app.post("/bass/tweak")
-def tweak_bass(req: TweakBassRequest):
-    base = GEN_CACHE.get_bass(int(req.track_index), int(req.clip_slot_index))
-    if base is None:
-        return {"ok": False, "error": "no_cached_bass", "hint": "Generate a bassline first."}
-    tweaked = _bass_apply_transpose_and_velocity(base, req.transpose, req.velocity_scale)
-    _write_bassline_to_ableton(int(req.track_index), int(req.clip_slot_index), tweaked)
-    GEN_CACHE.set_bass(int(req.track_index), int(req.clip_slot_index), tweaked)
-    return {"ok": True, "track_index": req.track_index, "clip_slot_index": req.clip_slot_index, "bassline": tweaked}
-
-
-@app.post("/drums/tweak")
-def tweak_drums(req: TweakDrumsRequest):
-    base = GEN_CACHE.get_drums(int(req.track_index), int(req.clip_slot_index))
-    if base is None:
-        return {"ok": False, "error": "no_cached_drums", "hint": "Generate a drum pattern first."}
-    tweaked = _drums_apply_velocity_scale(base, req.velocity_scale)
-    _write_pattern_to_ableton(int(req.track_index), int(req.clip_slot_index), tweaked)
-    GEN_CACHE.set_drums(int(req.track_index), int(req.clip_slot_index), tweaked)
-    return {"ok": True, "track_index": req.track_index, "clip_slot_index": req.clip_slot_index, "pattern": tweaked}
 
 
 @app.post("/devices/load")
@@ -7187,24 +6928,6 @@ def _set_rack_macro(track_index: int, device_index: int, macro: int, value: floa
     }
 
 
-@app.post("/bass/knobs/set")
-def set_bass_knob(req: SetNamedKnobRequest):
-    name = (req.name or "").strip().upper()
-    if name not in BASS_KNOB_TO_MACRO:
-        return {"ok": False, "error": "unknown_knob", "available": sorted(BASS_KNOB_TO_MACRO.keys())}
-    macro = int(BASS_KNOB_TO_MACRO[name])
-    return _set_rack_macro(BASS_RACK_TRACK_INDEX, BASS_RACK_DEVICE_INDEX, macro, req.value) | {"knob": name}
-
-
-@app.post("/drums/knobs/set")
-def set_drums_knob(req: SetNamedKnobRequest):
-    name = (req.name or "").strip().upper()
-    if name not in DRUMS_KNOB_TO_MACRO:
-        return {"ok": False, "error": "unknown_knob", "available": sorted(DRUMS_KNOB_TO_MACRO.keys())}
-    macro = int(DRUMS_KNOB_TO_MACRO[name])
-    return _set_rack_macro(DRUMS_FX_RACK_TRACK_INDEX, DRUMS_FX_RACK_DEVICE_INDEX, macro, req.value) | {"knob": name}
-
-
 # ---------------------------------------------------------------- AI provider settings
 # Every text-generation call goes through _call_ai_async, which uses whichever provider the
 # user picked on the System page. Keys live in .env (the page can write them there); the
@@ -7597,61 +7320,6 @@ async def _call_ai_async(system: str, user: str, temperature: float):
     }
 
 
-async def _openai_generate_pattern(style: str, bars: int, prompt: str | None, temperature: float):
-    style = (style or "").strip()
-    if not style:
-        return None, {"ok": False, "error": "missing_style"}
-
-    if bars < 1:
-        bars = 1
-    if bars > 4:
-        bars = 4
-
-    steps_per_bar = 16
-    total_steps = bars * steps_per_bar
-
-    schema = {
-        "bars": bars,
-        "step_division": "1/16",
-        "lanes": {
-            "kick": [0] * total_steps,
-            "snare": [0] * total_steps,
-            "ch": [0] * total_steps,
-            "oh": [0] * total_steps,
-            "perc1": [0] * total_steps,
-            "perc2": [0] * total_steps,
-        },
-    }
-
-    system = (
-        "You generate drum patterns as strict JSON only (no markdown, no prose). "
-        "Return a single JSON object with keys: bars, step_division, lanes. "
-        "step_division must be '1/16'. bars must be an integer 1..4. "
-        "lanes is an object mapping lane names to arrays of length bars*16. "
-        "Each array element is an integer velocity 0..127 (0 means no hit). "
-        "Valid lanes: kick, snare, clap, ch, oh, perc1, perc2. "
-        "Match the style: hard dance / gabber / hardcore often needs dense kicks and fast hats; minimal techno can stay sparse."
-    )
-
-    rec = STYLE_RECOMMENDATIONS.get(style.lower()) if isinstance(STYLE_RECOMMENDATIONS, dict) else None
-    drum_cues = ""
-    if isinstance(rec, dict) and rec.get("drums"):
-        drum_cues = f"\n\nDrum production cues (follow closely):\n{rec['drums']}\n"
-    if _groove_cues(style):
-        drum_cues += f"\n{_groove_cues(style)}\n"
-
-    user = (
-        f"Generate a {bars}-bar drum pattern in the style '{style}'. "
-        "Use 16 steps per bar (1/16). "
-        f"{drum_cues}"
-        "Return ONLY JSON.\n\n"
-        f"If you need a template, follow this shape: {json.dumps(schema)}\n\n"
-        f"Extra prompt: {prompt or ''}"
-    )
-
-    return await _call_ai_async(system, user, temperature)
-
-
 async def _openai_generate_fx_pattern(style: str, bars: int, prompt: str | None, temperature: float, context: str | None = None):
     style = (style or "").strip()
     if not style:
@@ -7983,37 +7651,6 @@ def _osc_fill_instruments_on_empty_tracks(plan: list[dict], applied: list[dict])
             )
 
 
-@app.get("/setup/status")
-def setup_status():
-    """Guidance for the recommended template set: Track 0 = DRUMS, Track 1 = BASS."""
-    status = {
-        "ok": True,
-        "listener": {"ok": OSC_LISTENER_ERROR is None, "error": OSC_LISTENER_ERROR},
-        "bridge": BRIDGE.status(),
-        "recommended_template": {
-            "tracks": [
-                {"index": 0, "role": "DRUMS", "expected": "MIDI track with Drum Rack/kit loaded"},
-                {"index": 1, "role": "BASS", "expected": "MIDI track with bass instrument loaded"},
-                {"index": CHORDS_TRACK_INDEX, "role": "CHORDS (optional)", "expected": "MIDI track with chord instrument (pads/piano/stabs)"},
-            ]
-        },
-        "checks": [],
-        "style_recommendations": STYLE_RECOMMENDATIONS,
-    }
-
-    if _live_query_unavailable():
-        status["ok"] = False
-        status["checks"].append({"ok": False, "error": "osc_listener_failed", "detail": OSC_LISTENER_ERROR})
-        return status
-
-    status["checks"].append(_query_with_timeout("/live/song/get/track_names", []))
-    for t in [0, 1, CHORDS_TRACK_INDEX]:
-        status["checks"].append(_query_with_timeout("/live/track/get/name", [t]))
-        status["checks"].append(_query_with_timeout("/live/track/get/num_devices", [t]))
-
-    return status
-
-
 @app.get("/bridge/status")
 def bridge_status(refresh: bool = False):
     """PulseBridge connection plus what this Live install supports (edition, version, devices)."""
@@ -8194,69 +7831,6 @@ def _ensure_scene_count(min_scenes: int):
         "after": after,
         "errors": errors,
     }
-
-
-async def _openai_generate_bassline(style: str, bars: int, root_midi: int, prompt: str | None, temperature: float):
-    style = (style or "").strip()
-    if not style:
-        return None, {"ok": False, "error": "missing_style"}
-
-    if bars < 1:
-        bars = 1
-    if bars > 4:
-        bars = 4
-
-    if root_midi < 0:
-        root_midi = 0
-    if root_midi > 127:
-        root_midi = 127
-
-    total_steps = bars * 16
-
-    profile = BASS_STYLE_PROFILE.get(style.lower())
-    if profile is None:
-        profile = {
-            "scale": "minor",
-            "octave_range": [2, 3],
-            "density": "medium",
-            "rhythm": "straight_16",
-            "note_pool": "root_fifth_octave",
-            "explain": "Default style profile (generic club bassline).",
-        }
-
-    schema = {
-        "bars": bars,
-        "step_division": "1/16",
-        "root_midi": root_midi,
-        "steps": [0] * total_steps,
-        "velocities": [0] * total_steps,
-    }
-
-    system = (
-        "You generate bassline patterns as strict JSON only (no markdown, no prose). "
-        "Return a single JSON object with keys: bars, step_division, root_midi, steps, velocities. "
-        "step_division must be '1/16'. bars must be an integer 1..4. root_midi must be 0..127. "
-        "steps is an array length bars*16. Each element is either 0 (rest) or a MIDI note number 0..127. "
-        "velocities is an array length bars*16. Each element is 0..127; use 0 when step is 0. "
-        "Keep it monophonic (at most one note per step). Match genre: hard dance often uses fewer, shorter notes; "
-        "house/techno can be more groovy and repetitive."
-    )
-
-    cues = _style_cues_for_generation(style)
-
-    user = (
-        f"Generate a {bars}-bar bassline in the style '{style}'. "
-        "Use 16 steps per bar (1/16). "
-        f"Use root note MIDI {root_midi} as the tonal center. "
-        f"Style settings: scale={profile['scale']}, octave_range={profile['octave_range']}, density={profile['density']}, rhythm={profile['rhythm']}, note_pool={profile['note_pool']}. "
-        f"Style profile intent: {profile.get('explain', '')}\n"
-        f"{(cues + chr(10)) if cues else ''}"
-        "Return ONLY JSON.\n\n"
-        f"Template shape: {json.dumps(schema)}\n\n"
-        f"Extra prompt: {prompt or ''}"
-    )
-
-    return await _call_ai_async(system, user, temperature)
 
 
 def _validate_pattern(pattern: dict, bars: int):
@@ -8904,170 +8478,3 @@ def _apply_style_to_bassline(bass: dict, style: str, drums: dict | None = None):
         "note": "These are post-processing defaults from the style's bass_profile, applied after AI generation to better match common feel for the style.",
     }
 
-
-def _bass_apply_transpose_and_velocity(bass: dict, transpose: int, velocity_scale: float):
-    transpose = int(transpose)
-    velocity_scale = float(velocity_scale)
-    if velocity_scale < 0.0:
-        velocity_scale = 0.0
-    if velocity_scale > 2.0:
-        velocity_scale = 2.0
-
-    steps = []
-    vels = []
-    for n, v in zip(bass["steps"], bass["velocities"]):
-        n2 = int(n)
-        v2 = int(v)
-        if n2 > 0:
-            n2 = n2 + transpose
-            if n2 < 1:
-                n2 = 1
-            if n2 > 127:
-                n2 = 127
-            v2 = int(round(v2 * velocity_scale))
-            if v2 < 1:
-                v2 = 1
-            if v2 > 127:
-                v2 = 127
-        else:
-            v2 = 0
-        steps.append(n2)
-        vels.append(v2)
-
-    out = dict(bass)
-    out["steps"] = steps
-    out["velocities"] = vels
-    return out
-
-
-def _drums_apply_velocity_scale(drums: dict, velocity_scale: float):
-    velocity_scale = float(velocity_scale)
-    if velocity_scale < 0.0:
-        velocity_scale = 0.0
-    if velocity_scale > 2.0:
-        velocity_scale = 2.0
-
-    lanes = {}
-    for lane, steps in drums["lanes"].items():
-        out_steps = []
-        for v in steps:
-            v2 = int(v)
-            if v2 > 0:
-                v2 = int(round(v2 * velocity_scale))
-                if v2 < 1:
-                    v2 = 1
-                if v2 > 127:
-                    v2 = 127
-            out_steps.append(v2)
-        lanes[lane] = out_steps
-
-    out = dict(drums)
-    out["lanes"] = lanes
-    return out
-
-
-@app.post("/patterns/generate_ai")
-async def generate_ai_pattern(req: GenerateAIPatternRequest):
-    pattern, meta = await _openai_generate_pattern(req.style, req.bars, req.prompt, req.temperature)
-    if not meta.get("ok"):
-        return meta
-
-    validated, vmeta = _validate_pattern(pattern, req.bars)
-    if not vmeta.get("ok"):
-        return {"ok": False, "error": "invalid_pattern", "detail": vmeta, "raw": pattern}
-
-    validated = {**_apply_groove_to_drums(validated, req.style), "swing": _style_swing(req.style)}
-    _write_pattern_to_ableton(int(req.track_index), int(req.clip_slot_index), validated)
-    GEN_CACHE.set_drums(int(req.track_index), int(req.clip_slot_index), validated)
-    return {"ok": True, "pattern": validated, "track_index": req.track_index, "clip_slot_index": req.clip_slot_index}
-
-
-@app.post("/perc/generate_ai")
-async def generate_ai_perc(req: GenerateAIPercPatternRequest):
-    pattern, meta = await _openai_generate_perc_pattern(req.style, req.bars, req.prompt, req.temperature)
-    if not meta.get("ok"):
-        return meta
-
-    validated, vmeta = _validate_pattern(pattern, req.bars)
-    if not vmeta.get("ok"):
-        return {"ok": False, "error": "invalid_pattern", "detail": vmeta, "raw": pattern}
-
-    validated = {**validated, "swing": _style_swing(req.style)}
-    _write_pattern_to_ableton(int(req.track_index), int(req.clip_slot_index), validated)
-    GEN_CACHE.set_perc(int(req.track_index), int(req.clip_slot_index), validated)
-    return {"ok": True, "pattern": validated, "track_index": req.track_index, "clip_slot_index": req.clip_slot_index}
-
-
-@app.post("/stabs/generate_ai")
-async def generate_ai_stabs(req: GenerateAIStabsPatternRequest):
-    pattern, meta = await _openai_generate_stabs_pattern(req.style, req.bars, req.prompt, req.temperature)
-    if not meta.get("ok"):
-        return meta
-
-    validated, vmeta = _validate_pattern(pattern, req.bars)
-    if not vmeta.get("ok"):
-        return {"ok": False, "error": "invalid_pattern", "detail": vmeta, "raw": pattern}
-
-    validated = {**validated, "swing": _style_swing(req.style)}
-    voicings = _stab_voicings(_tonic_chord_prog(_style_root_midi(req.style), int(validated["bars"]), style=req.style), int(validated["bars"]))
-    if voicings:
-        validated["voicings"] = voicings
-    _write_pattern_to_ableton(int(req.track_index), int(req.clip_slot_index), validated)
-    GEN_CACHE.set_stabs(int(req.track_index), int(req.clip_slot_index), validated)
-    return {"ok": True, "pattern": validated, "track_index": req.track_index, "clip_slot_index": req.clip_slot_index}
-
-
-@app.post("/fx/generate_ai")
-async def generate_ai_fx(req: GenerateAIFxPatternRequest):
-    pattern, meta = await _openai_generate_fx_pattern(req.style, req.bars, req.prompt, req.temperature)
-    if not meta.get("ok"):
-        return meta
-
-    validated, vmeta = _validate_pattern(pattern, req.bars)
-    if not vmeta.get("ok"):
-        return {"ok": False, "error": "invalid_pattern", "detail": vmeta, "raw": pattern}
-
-    validated = {**validated, "swing": _style_swing(req.style)}
-    _write_pattern_to_ableton(int(req.track_index), int(req.clip_slot_index), validated)
-    GEN_CACHE.set_fx(int(req.track_index), int(req.clip_slot_index), validated)
-    return {"ok": True, "pattern": validated, "track_index": req.track_index, "clip_slot_index": req.clip_slot_index}
-
-
-@app.post("/bass/generate_ai")
-async def generate_ai_bassline(req: GenerateAIBasslineRequest):
-    style = (req.style or "").strip().lower()
-    root = int(req.root_midi)
-    if style in BASS_STYLE_DEFAULTS:
-        root = int(BASS_STYLE_DEFAULTS[style]["root"])
-
-    applied = BASS_STYLE_PROFILE.get(style, BASS_STYLE_PROFILE["techno"])
-
-    pattern, meta = await _openai_generate_bassline(style, req.bars, root, req.prompt, req.temperature)
-    if not meta.get("ok"):
-        return meta
-
-    validated, vmeta = _validate_bassline(pattern, req.bars)
-    if not vmeta.get("ok"):
-        return {"ok": False, "error": "invalid_bassline", "detail": vmeta, "raw": pattern}
-
-    styled, sp = _apply_style_to_bassline(validated, style)
-
-    _write_bassline_to_ableton(int(req.track_index), int(req.clip_slot_index), styled)
-    GEN_CACHE.set_bass(int(req.track_index), int(req.clip_slot_index), styled)
-    return {
-        "ok": True,
-        "bassline": styled,
-        "track_index": req.track_index,
-        "clip_slot_index": req.clip_slot_index,
-        "applied": {
-            "style": style,
-            "root_midi": root,
-            "scale": applied["scale"],
-            "octave_range": applied["octave_range"],
-            "density": applied["density"],
-            "rhythm": applied["rhythm"],
-            "note_pool": applied["note_pool"],
-            "explain": applied["explain"],
-            "post": sp,
-        },
-    }
