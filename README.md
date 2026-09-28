@@ -84,7 +84,9 @@ Then in Live:
 
 1. Open **Settings** (Preferences on macOS) → **Link, Tempo & MIDI**.
 2. In an empty **Control Surface** slot choose **PulseBridge**. Leave Input and Output as **None**.
-3. Live's status bar shows `PulseBridge 0.1.0 ready on port 9880`.
+3. Live's status bar shows `PulseBridge 0.2.0 ready on port 9880`.
+
+Updating from an older copy? Run the installer again, then set the Control Surface slot to None and back to PulseBridge. Version 0.2.0 adds the return tracks and sends that full tracks use for reverb and delay; older versions still work, just without them.
 
 If Live was already open and PulseBridge doesn't appear in the list, restart Live.
 
@@ -118,10 +120,10 @@ Leave the `PS-TRK-…` track names as they are: Pulse uses them to recognise tra
 
 | View | What it does |
 |---|---|
-| **Compose** | Generate drum/bass pairs, chords and full arrangements (Intro, Main, Break, Drop, Outro) into Session View. **Voice** generates spoken/sung lines and **Send to Live** puts them on a `PS-VOX` audio track. |
+| **Compose** | Generate drum/bass pairs, chords and full arrangements (Intro, Main, Break, Drop, Outro) into Session View. A full track fills seven tracks (Drums, Bass, Perc, Stabs, FX, Chords and Pad) and adds a reverb and a delay return with sends set for each part. Returns already in your set are reused, and sends you've moved by hand are left alone. **Voice** generates spoken/sung lines and **Send to Live** puts them on a `PS-VOX` audio track. |
 | **Styles** | Browse and edit the style knowledge base (`knowledge/styles.json`): tempo, kit, bass and harmony rules. **Rebuild browser index** rescans Live's browser so Pulse can pick presets from your Library. |
 | **Samples** | Import WAVs (optionally trimming silence), search Live's library, and send a sample to an audio clip, a Simpler or a Drum Rack pad. Imported files live in `samples/` (git-ignored). |
-| **Perform** | Style pads, macro knobs and vox pads for playing live. Keys 1–8 fire the vox pads while the page is open. |
+| **Perform** | Built for playing live. A pinned deck shows play/stop, position, tempo (with nudge) and what is playing now and next, plus **Autopilot** (plays the Compose arrangement until you launch a scene yourself) and **Stop clips**. Below it: scene pads named after your scenes, part toggles that mute each track with a level meter, moves (Wash & Drop, Breakdown → Drop, Delay Throw, and Fade Out, which you press twice), and vox pads. Moves wait for Live's grid: they start on the next bar (Delay Throw on the next beat), so press a little ahead. Keyboard: Space play/stop, 1–0 scenes, Q–P parts, A–K vox pads, B wash, N breakdown (press again to drop early), V delay throw, [ and ] tempo. Track knobs and the recorder are in the collapsed sections at the bottom. |
 | **Live Overview** | Transport, tempo, key and the tracks, devices and playing clips in your set, updated live. |
 | **Visualizer** | Animated scenes driven by Live's output meters (no microphone or audio routing). Pick a scene and theme, set it to change every 4/8/16 bars, or go fullscreen. |
 | **System** | AI provider and model, connection status, diagnostics, browser index tools and logs. |

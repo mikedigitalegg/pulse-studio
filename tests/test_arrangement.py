@@ -230,6 +230,20 @@ def test_full_track_layers_see_groove_and_stabs_follow_chords(fake_ai, fake_ctrl
         assert pitch % 12 in chord_pcs
 
 
+def test_full_track_pad_fills_the_thin_sections(fake_ai, fake_ctrl):
+    res = _run_full("techno")
+    assert res["ok"], res
+    slots = {s["name"]: s["slot"] for s in res["scenes"]}
+    pad = srv.PAD_TRACK_INDEX
+    assert fake_ctrl.clips.get((pad, slots["Breakdown"])) and fake_ctrl.clips.get((pad, slots["Intro"]))
+    assert (pad, slots["Drop"]) not in fake_ctrl.clips
+    included = {s["name"]: s["tracks"]["pad"]["included"] for s in res["scenes"]}
+    assert included["Breakdown"] and not included["Drop"]
+    # Held above the Chords track.
+    chords_top = max(p for p, *_ in fake_ctrl.clips[(srv.CHORDS_TRACK_INDEX, slots["Breakdown"])])
+    assert min(p for p, *_ in fake_ctrl.clips[(pad, slots["Breakdown"])]) > chords_top - 12
+
+
 def test_full_track_swing_applies_to_every_layer(fake_ai):
     res = _run_full("garage")
     assert res["ok"], res

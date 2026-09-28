@@ -79,6 +79,7 @@ PERC_TRACK_INDEX = 2
 STABS_TRACK_INDEX = 3
 FX_TRACK_INDEX = 4
 CHORDS_TRACK_INDEX = 5
+PAD_TRACK_INDEX = 6
 KNOWLEDGE_FILE = os.path.join(APP_DIR, "knowledge", "styles.json")
 
 _AUTOPLAY_LOCK = threading.Lock()
@@ -93,9 +94,10 @@ PULSE_TRACK_PLAN: list[dict] = [
     {"name": "Stabs", "track_index": STABS_TRACK_INDEX, "role": "stabs", "q": "stab"},
     {"name": "FX", "track_index": FX_TRACK_INDEX, "role": "fx", "q": "pad"},
     {"name": "Chords", "track_index": CHORDS_TRACK_INDEX, "role": "chords", "q": "pad"},
+    {"name": "Pad", "track_index": PAD_TRACK_INDEX, "role": "pad", "q": "pad"},
 ]
 # Roles understood by the legacy (pre-PulseBridge) keyword picker.
-_LEGACY_PICKER_ROLE = {"perc": "drums", "fx": "pads", "chords": "pads"}
+_LEGACY_PICKER_ROLE = {"perc": "drums", "fx": "pads", "chords": "pads", "pad": "pads"}
 
 
 def _pulse_required_track_count() -> int:
@@ -3697,6 +3699,46 @@ def fire_scene(req: FireSceneRequest):
     return {"ok": True, "scene_index": req.scene_index}
 
 
+class TrackMuteRequest(BaseModel):
+    track_index: int = Field(ge=0)
+    mute: bool
+
+
+@app.post("/tracks/mute")
+def tracks_mute(req: TrackMuteRequest):
+    ctrl.send("/live/track/set/mute", [int(req.track_index), bool(req.mute)])
+    return {"ok": True, "track_index": int(req.track_index), "mute": bool(req.mute)}
+
+
+@app.post("/clips/stop_all")
+def clips_stop_all():
+    """Stop every playing clip but keep the transport running (a panic that stays in time)."""
+    if not BRIDGE.connected:
+        ctrl.send("/live/song/stop_all_clips", [])
+        return {"ok": True, "via": "osc"}
+    try:
+        BRIDGE.request("stop_all_clips", timeout_s=2.0)
+        return {"ok": True, "via": "bridge"}
+    except BridgeError as e:
+        if "unknown_command" not in str(e):
+            return {"ok": False, "error": str(e)}
+    # PulseBridge before 0.2.0: stop each playing clip instead.
+    snap = BRIDGE.request("get_snapshot", timeout_s=3.0) or {}
+    stopped = 0
+    for t in snap.get("tracks") or []:
+        slot = t.get("playing_slot_index")
+        if isinstance(slot, int) and slot >= 0:
+            BRIDGE.send("stop_clip", {"track_index": int(t["index"]), "clip_slot_index": slot})
+            stopped += 1
+    return {"ok": True, "via": "per_track", "stopped": stopped}
+
+
+@app.get("/tracks/plan")
+def tracks_plan():
+    """The tracks Pulse writes to, so pages can label them by role."""
+    return {"ok": True, "tracks": [{"track_index": int(p["track_index"]), "role": p["role"], "name": p["name"]} for p in PULSE_TRACK_PLAN]}
+
+
 def _autoplay_worker(*, steps: list[dict], bpm: float, clip_bars: int, loop: bool, stop_event: threading.Event):
     bpm_f = float(bpm or 140.0)
     if bpm_f <= 1.0:
@@ -4016,12 +4058,20 @@ def fade_out(req: FadeOutRequest):
 
 
 def _wash_drop_thread(bars: int):
-    # Calculate duration based on current tempo
-    tempo_res = _query_with_timeout("/live/song/get/tempo", [])
-    tempo = 120.0
-    if tempo_res["ok"] and tempo_res["args"]:
-        tempo = float(tempo_res["args"][0])
-    
+    # Start on the next bar and drop on the downbeat, when Live's clock can be read.
+    clock = _song_clock()
+    drop_beat = None
+    if clock is not None and clock["playing"]:
+        tempo = clock["tempo"]
+        start = _next_boundary(clock, clock["beats_per_bar"])
+        drop_beat = start + bars * clock["beats_per_bar"]
+        _wait_for_beat(start)
+    else:
+        tempo_res = _query_with_timeout("/live/song/get/tempo", [])
+        tempo = 120.0
+        if tempo_res["ok"] and tempo_res["args"]:
+            tempo = float(tempo_res["args"][0])
+
     sec_per_beat = 60.0 / tempo
     total_time = bars * 4 * sec_per_beat
     steps = 40
@@ -4050,9 +4100,13 @@ def _wash_drop_thread(bars: int):
         b_cut = 0.4 - (t * 0.2)
         _set_rack_macro(1, 0, 8, b_space) # Space
         _set_rack_macro(1, 0, 1, b_cut)   # Cutoff
-        
-        time.sleep(interval)
-        
+
+        if i < steps - 1 or drop_beat is None:
+            time.sleep(interval)
+
+    if drop_beat is not None:
+        _wait_for_beat(drop_beat)  # the sweep's sleeps drift; the drop itself lands on the bar
+
     # THE DROP - Reset instantly
     _set_rack_macro(0, 1, 7, 0.1) # Drums Space
     _set_rack_macro(0, 1, 5, 0.0) # Drums Low Cut
@@ -4068,6 +4122,249 @@ def wash_drop(req: WashDropRequest):
     th = threading.Thread(target=_wash_drop_thread, args=(req.duration_bars,))
     th.start()
     return {"ok": True, "status": "washing", "bars": req.duration_bars}
+
+
+# ---------------------------------------------------------------- bar snap
+# Live quantizes clip and scene launches, but not mutes or sends. Moves built from those wait on
+# Live's own clock instead of the moment the button was pressed, so they land on the grid.
+GRID_LEAD_S = 0.012  # send a hair early: the command still has to reach Live
+GRID_LATE_BEATS = 0.06  # pressed just after a boundary counts as on it, not a whole bar late
+
+
+def _song_clock() -> dict | None:
+    """Live's position now: {playing, beat, tempo, beats_per_bar}. None when the bridge can't answer.
+
+    beat is in quarter notes like Live's song time, adjusted for half the round trip.
+    """
+    if not BRIDGE.connected:
+        return None
+    t0 = time.monotonic()
+    try:
+        s = BRIDGE.request("get_song", timeout_s=1.0) or {}
+    except BridgeError:
+        return None
+    tempo = float(s.get("tempo") or 120.0)
+    num = max(1, int(s.get("signature_numerator") or 4))
+    den = max(1, int(s.get("signature_denominator") or 4))
+    beat = float(s.get("current_song_time") or 0.0)
+    playing = bool(s.get("is_playing"))
+    if playing:
+        beat += (time.monotonic() - t0) / 2.0 * tempo / 60.0
+    return {"playing": playing, "beat": beat, "tempo": tempo, "beats_per_bar": num * 4.0 / den}
+
+
+def _next_boundary(clock: dict, unit_beats: float) -> float:
+    """The next multiple of unit_beats (a bar, a beat) at or just behind the clock."""
+    beat = clock["beat"]
+    k = math.floor(beat / unit_beats)
+    if beat - k * unit_beats <= GRID_LATE_BEATS:
+        return k * unit_beats
+    return (k + 1) * unit_beats
+
+
+def _wait_for_beat(target: float, interrupt: threading.Event | None = None) -> bool:
+    """Sleep until Live reaches beat target. False if interrupt was set first.
+
+    The clock is read again as the target nears, so tempo nudges during a long wait stay in time.
+    Returns at once when the transport stops or Live can't be asked; the caller then just acts.
+    """
+    while True:
+        clock = _song_clock()
+        if clock is None or not clock["playing"]:
+            return True
+        left = (target - clock["beat"]) * 60.0 / clock["tempo"] - GRID_LEAD_S
+        if left <= 0:
+            return True
+        # Long waits check back 0.5 s out; the last stretch is one sleep.
+        step = min(left - 0.5, 2.0) if left > 0.75 else left
+        if interrupt is not None:
+            if interrupt.wait(step):
+                return False
+        else:
+            time.sleep(step)
+        if step == left:
+            return True
+
+
+def _grid_or_error() -> tuple[dict | None, dict | None]:
+    """(clock, None) when a move can run on the grid, or (None, error response)."""
+    if not BRIDGE.connected:
+        return None, {"ok": False, "error": "bridge_not_connected", "hint": "Moves need PulseBridge enabled in Live's Control Surface settings."}
+    clock = _song_clock()
+    if clock is None:
+        return None, {"ok": False, "error": "no_clock", "hint": "Live didn't answer; try again."}
+    if not clock["playing"]:
+        return None, {"ok": False, "error": "not_playing", "hint": "Press play first: moves land on the next bar."}
+    return clock, None
+
+
+def _role_tracks(roles: list[str]) -> list[int]:
+    wanted = {r.strip().lower() for r in roles}
+    return [int(p["track_index"]) for p in PULSE_TRACK_PLAN if p["role"] in wanted]
+
+
+# ---------------------------------------------------------------- Breakdown → Drop
+# Drums and bass drop out on the next bar and come back on the downbeat N bars later. Only parts
+# that were playing are muted, and only those are brought back, so mutes set by hand stay put.
+# Pressing again during the breakdown drops on the next bar instead of waiting it out.
+
+class BreakdownRequest(BaseModel):
+    bars: int = Field(default=4, ge=1, le=32)
+    roles: list[str] = Field(default_factory=lambda: ["drums", "bass"])
+
+
+_BREAKDOWN_LOCK = threading.Lock()
+_BREAKDOWN: dict = {"running": False, "drop_now": None, "drop_beat": None}
+
+
+def _set_mutes(tracks: list[int], mute: bool):
+    for ti in tracks:
+        try:
+            BRIDGE.request("set_track", {"track_index": ti, "mute": mute}, timeout_s=1.0)
+        except BridgeError as e:
+            print(f"[breakdown] mute {ti} -> {mute} failed: {e}")
+
+
+def _breakdown_thread(start_beat: float, bars: int, beats_per_bar: float, tracks: list[int], drop_now: threading.Event):
+    muted: list[int] = []
+    playing: list[int] = []
+    for ti in tracks:
+        try:
+            if not (BRIDGE.request("get_track", {"track_index": ti}, timeout_s=1.0) or {}).get("mute"):
+                playing.append(ti)
+        except BridgeError:
+            continue
+    try:
+        _wait_for_beat(start_beat)
+        muted = playing
+        _set_mutes(muted, True)
+        drop_beat = start_beat + bars * beats_per_bar
+        with _BREAKDOWN_LOCK:
+            _BREAKDOWN["drop_beat"] = drop_beat
+        if not _wait_for_beat(drop_beat, interrupt=drop_now):
+            clock = _song_clock()
+            if clock is not None and clock["playing"]:
+                drop_beat = _next_boundary(clock, clock["beats_per_bar"])
+                with _BREAKDOWN_LOCK:
+                    _BREAKDOWN["drop_beat"] = drop_beat
+                _wait_for_beat(drop_beat)
+    finally:
+        _set_mutes(muted, False)
+        with _BREAKDOWN_LOCK:
+            _BREAKDOWN.update({"running": False, "drop_now": None, "drop_beat": None})
+
+
+@app.post("/moves/breakdown")
+def move_breakdown(req: BreakdownRequest):
+    with _BREAKDOWN_LOCK:
+        if _BREAKDOWN["running"]:
+            _BREAKDOWN["drop_now"].set()
+            return {"ok": True, "status": "dropping", "drop_beat": _BREAKDOWN["drop_beat"]}
+    clock, err = _grid_or_error()
+    if err:
+        return err
+    tracks = _role_tracks(req.roles)
+    if not tracks:
+        return {"ok": False, "error": "no_tracks", "hint": "None of those roles are Pulse tracks: " + ", ".join(req.roles)}
+    bpb = clock["beats_per_bar"]
+    start = _next_boundary(clock, bpb)
+    drop_now = threading.Event()
+    with _BREAKDOWN_LOCK:
+        _BREAKDOWN.update({"running": True, "drop_now": drop_now, "drop_beat": start + req.bars * bpb})
+    threading.Thread(target=_breakdown_thread, args=(start, req.bars, bpb, tracks, drop_now), daemon=True).start()
+    return {"ok": True, "status": "breaking_down", "start_beat": start, "drop_beat": start + req.bars * bpb, "tracks": tracks}
+
+
+@app.get("/moves/status")
+def moves_status():
+    with _BREAKDOWN_LOCK:
+        bd = {"running": _BREAKDOWN["running"], "drop_beat": _BREAKDOWN["drop_beat"]}
+    with _THROW_LOCK:
+        th = {"running": _THROW["running"]}
+    return {"ok": True, "breakdown": bd, "delay_throw": th}
+
+
+# ---------------------------------------------------------------- Delay Throw
+# Opens the delay send on the melodic parts for a beat, then puts each send back where it was, so
+# the echoes ring on after the dry sound. Lands on the next beat rather than the next bar: a
+# throw is played in time with a phrase, not with the arrangement.
+
+class DelayThrowRequest(BaseModel):
+    beats: float = Field(default=1.0, gt=0.0, le=16.0)
+    level: float = Field(default=1.0, ge=0.0, le=1.0)
+    roles: list[str] = Field(default_factory=lambda: ["stabs", "chords"])
+    track_indices: list[int] = Field(default_factory=list)  # extra tracks, such as the vox track
+
+
+_THROW_LOCK = threading.Lock()
+_THROW: dict = {"running": False}
+
+
+def _delay_return_index() -> int | None:
+    """The return carrying one of Pulse's delay devices (PS-Delay, or Live's own B-Delay)."""
+    spec = next(s for s in PULSE_RETURNS if s["key"] == "delay")
+    returns = (BRIDGE.request("get_return_tracks", timeout_s=2.0) or {}).get("returns") or []
+    for r in returns:
+        names = {d.get("name") for d in r.get("devices") or []}
+        if r.get("name") == spec["name"] or names & set(spec["chain"]):
+            return int(r["return_index"])
+    return None
+
+
+def _throw_thread(start_beat: float, end_beat: float, saved: dict[int, float], ri: int, level: float):
+    raised: list[int] = []
+    try:
+        _wait_for_beat(start_beat)
+        for ti in saved:
+            try:
+                BRIDGE.request("set_send", {"track_index": ti, "send_index": ri, "value": level}, timeout_s=1.0)
+                raised.append(ti)
+            except BridgeError as e:
+                print(f"[delay throw] send {ti} failed: {e}")
+        _wait_for_beat(end_beat)
+    finally:
+        for ti in raised:
+            try:
+                BRIDGE.request("set_send", {"track_index": ti, "send_index": ri, "value": saved[ti]}, timeout_s=1.0)
+            except BridgeError as e:
+                print(f"[delay throw] restoring send {ti} failed: {e}")
+        with _THROW_LOCK:
+            _THROW["running"] = False
+
+
+@app.post("/moves/delay_throw")
+def move_delay_throw(req: DelayThrowRequest):
+    with _THROW_LOCK:
+        if _THROW["running"]:
+            return {"ok": True, "status": "throwing"}  # a second press would save the raised levels
+    clock, err = _grid_or_error()
+    if err:
+        return err
+    try:
+        ri = _delay_return_index()
+    except BridgeError as e:
+        if "unknown_command" in str(e):
+            return {"ok": False, "error": "bridge_outdated", "hint": _BRIDGE_UPDATE_HINT}
+        return {"ok": False, "error": str(e)}
+    if ri is None:
+        return {"ok": False, "error": "no_delay_return", "hint": "No delay return in this set yet: load a sound palette in Compose to add one."}
+    tracks = list(dict.fromkeys(_role_tracks(req.roles) + [int(t) for t in req.track_indices if int(t) >= 0]))
+    saved: dict[int, float] = {}
+    for ti in tracks:
+        try:
+            sends = (BRIDGE.request("get_track", {"track_index": ti}, timeout_s=1.0) or {}).get("sends") or []
+        except BridgeError:
+            continue
+        if ri < len(sends):
+            saved[ti] = float(sends[ri])
+    if not saved:
+        return {"ok": False, "error": "no_tracks", "hint": "None of those tracks has a send to the delay return."}
+    start = _next_boundary(clock, 1.0)
+    end = start + float(req.beats)
+    with _THROW_LOCK:
+        _THROW["running"] = True
+    threading.Thread(target=_throw_thread, args=(start, end, saved, ri, float(req.level)), daemon=True).start()
+    return {"ok": True, "status": "throwing", "start_beat": start, "end_beat": end, "return_index": ri, "tracks": sorted(saved)}
 
 
 @app.post("/patterns/launch")
@@ -4620,6 +4917,53 @@ def _core_reference_prompt(core: dict, bars: int) -> str:
     )
 
 
+# The Pad track holds the progression an octave above the Chords track, where the arrangement
+# thins out most. level scales the chord velocity; "tonic" holds the first chord only, "top" keeps
+# the upper two notes so the pad sits behind busy sections. Scenes not listed (Drop) have no pad.
+PAD_SCENES = {
+    "Intro": {"level": 0.8, "voicing": "tonic"},
+    "Outro": {"level": 0.8, "voicing": "tonic"},
+    "Break": {"level": 1.0, "voicing": "full"},
+    "Breakdown": {"level": 1.0, "voicing": "full"},
+    "Build 1": {"level": 0.6, "voicing": "full"},
+    "Build 2": {"level": 0.65, "voicing": "full"},
+    "Main A": {"level": 0.55, "voicing": "top"},
+    "Main B": {"level": 0.55, "voicing": "top"},
+    "Peak": {"level": 0.5, "voicing": "top"},
+    "Climax": {"level": 0.55, "voicing": "top"},
+}
+PAD_MAX_PITCH = 96
+
+
+def _pad_voicing(notes: list, mode: str) -> list[int]:
+    """Chord notes an octave up, root left to the bass and chords, kept below PAD_MAX_PITCH."""
+    pitches = sorted(int(n) for n in notes if isinstance(n, (int, float)) and 0 <= int(n) <= 127)
+    if not pitches:
+        return []
+    upper = pitches[1:] if len(pitches) > 2 else pitches
+    lifted = [p + 12 if p + 12 <= PAD_MAX_PITCH else p for p in upper]
+    return lifted[-2:] if mode == "top" else lifted
+
+
+def _pad_part(chord_prog: dict | None, scene_name: str, clip_bars: int, chord_velocity: int) -> tuple[dict | None, int]:
+    """(held progression for the Pad track, velocity), or (None, 0) when the scene has no pad."""
+    spec = PAD_SCENES.get(scene_name)
+    chords = [c for c in (chord_prog or {}).get("chords") or [] if isinstance(c, dict)]
+    if not spec or not chords:
+        return None, 0
+    if spec["voicing"] == "tonic":
+        chords = [{**chords[0], "bar": b} for b in range(int(clip_bars))]
+    voiced = []
+    for ch in chords:
+        notes = _pad_voicing(ch.get("notes") or [], spec["voicing"])
+        if notes:
+            voiced.append({**ch, "notes": notes})
+    if not voiced:
+        return None, 0
+    velocity = max(30, min(127, int(round(chord_velocity * spec["level"]))))
+    return {**chord_prog, "bars": int(clip_bars), "chords": voiced, "rhythm": "sustain"}, velocity
+
+
 @app.post("/track/generate_full")
 async def generate_full_track(req: GenerateFullTrackRequest):
     style = (req.style or "").strip().lower()
@@ -4737,6 +5081,7 @@ async def generate_full_track(req: GenerateFullTrackRequest):
 
     instrument_applied = None
     drum_bus_applied = None
+    returns_applied = None
     if bool(req.apply_instruments):
         # New tracks/renames need a moment before load_device / browser loads reliably.
         await asyncio.sleep(0.45)
@@ -4746,6 +5091,7 @@ async def generate_full_track(req: GenerateFullTrackRequest):
             )
             instrument_applied = palette["results"]
             drum_bus_applied = palette.get("drum_bus")
+            returns_applied = palette.get("returns")
         else:
             instrument_applied = await _choose_and_apply_instruments_for_full_track(
                 style,
@@ -4915,6 +5261,13 @@ async def generate_full_track(req: GenerateFullTrackRequest):
             except Exception:
                 pass
 
+        pad_prog, pad_velocity = _pad_part(chord_prog, str(sc.get("name") or ""), clip_bars, chord_velocity)
+        if pad_prog is not None:
+            try:
+                _write_chords_to_ableton(PAD_TRACK_INDEX, slot, pad_prog, pad_velocity)
+            except Exception:
+                pass
+
         out_scenes.append({
             "name": sc["name"],
             "slot": slot,
@@ -4927,6 +5280,7 @@ async def generate_full_track(req: GenerateFullTrackRequest):
                 "stabs": {"track": 3, "slot": slot, "included": bool(inc.get("stabs"))},
                 "fx": {"track": 4, "slot": slot, "included": bool(inc.get("fx"))},
                 "chords": {"track": CHORDS_TRACK_INDEX, "slot": slot, "included": True},
+                "pad": {"track": PAD_TRACK_INDEX, "slot": slot, "included": pad_prog is not None},
             },
             "prompt": sc.get("prompt"),
         })
@@ -4949,6 +5303,7 @@ async def generate_full_track(req: GenerateFullTrackRequest):
             "attempted": bool(req.apply_instruments),
             "applied": instrument_applied,
             "drum_bus": drum_bus_applied,
+            "returns": returns_applied,
             "hints": _instrument_index_hints_from_applied(instrument_applied) if bool(req.apply_instruments) else [],
         },
         "chords": {"track_index": CHORDS_TRACK_INDEX, "root_midi": chord_root, "progression": chord_prog},
@@ -5510,6 +5865,7 @@ async def _choose_and_apply_instruments_for_full_track(style: str, *, prompt: st
     # - Track 3 is stabs (treated as stabs)
     # - Track 4 is fx (treated as pads/noise)
     # - Track 5 is chords (treated as pads)
+    # - Track 6 is the pad (treated as pads)
     plan = [{"track_index": int(x["track_index"]), "role": x["role"], "q": x.get("q")} for x in PULSE_TRACK_PLAN]
 
     applied: list[dict] = []
@@ -5625,6 +5981,10 @@ def _record_palette_load(track_index: int, style: str, device: str | None, *, sl
         state[key] = {"style": style, "device": device}
     else:
         state.pop(key, None)
+    _write_palette_state(state)
+
+
+def _write_palette_state(state: dict):
     with _PALETTE_STATE_LOCK:
         try:
             with open(PALETTE_STATE_FILE, "w", encoding="utf-8") as f:
@@ -5774,11 +6134,20 @@ async def _apply_instrument_palette(
         except BridgeError as e:
             drum_bus = {"track_index": int(drums_plan["track_index"]), "role": "drum_bus", "action": "failed", "error": str(e)}
 
+    # Reverb/delay returns belong to the whole set, so a re-pick of a few roles leaves them alone.
+    returns = None
+    if roles is None:
+        try:
+            returns = await _apply_returns(style)
+        except BridgeError as e:
+            returns = {"action": "failed", "error": str(e)}
+
     return {
         "ok": all(r.get("action") != "failed" for r in results),
         "style": style,
         "results": results,
         "drum_bus": drum_bus,
+        "returns": returns,
         "ai": ai_meta,
         "index_items": len(items),
     }
@@ -5876,6 +6245,133 @@ async def _apply_drum_bus(style: str, track_index: int) -> dict:
     if missing:
         out["unmatched_params"] = missing
     return out
+
+
+# Return tracks Pulse sets up for space. The first device in each chain that this Live edition has
+# is used. A return that already carries one of those devices (Live's default set has "A-Reverb"
+# and "B-Delay") is reused as it is. Params are normalized 0..1 like the drum bus.
+PULSE_RETURNS = [
+    {"key": "reverb", "name": "PS-Reverb", "chain": ["Reverb", "Hybrid Reverb"], "params": {"Dry/Wet": 1.0}},
+    {"key": "delay", "name": "PS-Delay", "chain": ["Delay", "Echo", "Simple Delay", "Ping Pong Delay"], "params": {"Dry/Wet": 1.0}},
+]
+# Send levels per role (Live's send range, 1.0 = 0 dB). Kick and bass stay dry to keep the low end
+# tight. A style can override any of these in styles.json: "sends": {"reverb": {"pad": 0.7}}.
+DEFAULT_SENDS = {
+    "reverb": {"drums": 0.0, "bass": 0.0, "perc": 0.35, "stabs": 0.45, "fx": 0.6, "chords": 0.45, "pad": 0.6},
+    "delay": {"drums": 0.0, "bass": 0.0, "perc": 0.25, "stabs": 0.45, "fx": 0.45, "chords": 0.2, "pad": 0.15},
+}
+_BRIDGE_UPDATE_HINT = (
+    "PulseBridge needs updating for return tracks: run python pulse_bridge/install.py, "
+    "then reselect PulseBridge in Live's Control Surface settings."
+)
+
+
+def _style_sends(style: str) -> dict[str, dict[str, float]]:
+    cfg = STYLE_CONFIG.get((style or "").strip().lower()) if isinstance(STYLE_CONFIG, dict) else None
+    override = cfg.get("sends") if isinstance(cfg, dict) else None
+    out = {k: dict(v) for k, v in DEFAULT_SENDS.items()}
+    if isinstance(override, dict):
+        for key, levels in override.items():
+            if key in out and isinstance(levels, dict):
+                out[key].update({r: float(v) for r, v in levels.items() if isinstance(v, (int, float))})
+    return out
+
+
+async def _ensure_return(spec: dict, returns: list[dict], available: set[str]) -> dict:
+    """Find or create the return for spec: {key, return_index, name, device, action}."""
+    out: dict = {"key": spec["key"]}
+    for r in returns:
+        names = [d.get("name") for d in r.get("devices") or []]
+        dev = next((d for d in spec["chain"] if d in names), None)
+        if dev:
+            out.update({"return_index": r["return_index"], "name": r.get("name"), "device": dev, "action": "reused"})
+            return out
+    chain = [d for d in spec["chain"] if not available or d in available]
+    if not chain:
+        out.update({"action": "skipped", "reason": "none of " + ", ".join(spec["chain"]) + " is in this Live edition"})
+        return out
+
+    ours = next((r for r in returns if r.get("name") == spec["name"]), None)
+    if ours is not None:
+        ri = int(ours["return_index"])  # our return lost its device; put it back
+        out["action"] = "repaired"
+    else:
+        try:
+            ri = int((await _bridge_call("create_return_track", {"name": spec["name"]}) or {})["return_index"])
+        except BridgeError as e:
+            if "return_track_limit" in str(e):
+                out.update({"action": "skipped", "reason": "this Live edition allows no more return tracks"})
+                return out
+            raise
+        out["action"] = "created"
+    name = chain[0]
+    await _bridge_call("load_device", {"return_index": ri, "device_name": name}, timeout_s=10.0)
+    info = await _bridge_call("get_track", {"return_index": ri})
+    di = next((d["index"] for d in reversed(info.get("devices") or []) if d.get("name") == name), None)
+    if di is None:
+        out.update({"return_index": ri, "action": "failed", "error": f"{name} didn't appear on the return track"})
+        return out
+    params = (await _bridge_call("get_device_params", {"return_index": ri, "device_index": di}) or {}).get("parameters") or []
+    for key, norm in spec["params"].items():
+        p = _match_param(params, key)
+        if p is not None:
+            lo, hi = float(p.get("min", 0.0)), float(p.get("max", 1.0))
+            await _bridge_call("set_device_param", {"return_index": ri, "device_index": di, "param_index": p["index"], "value": lo + norm * (hi - lo)})
+    out.update({"return_index": ri, "name": spec["name"], "device": name})
+    return out
+
+
+async def _apply_returns(style: str) -> dict:
+    """Make sure the set has a reverb and a delay return, then set each Pulse track's sends.
+
+    A send is only changed while it is still at zero or at the level Pulse last set, so sends the
+    producer has moved by hand are left alone.
+    """
+    try:
+        returns = (await _bridge_call("get_return_tracks") or {}).get("returns") or []
+    except BridgeError as e:
+        if "unknown_command" in str(e):
+            return {"action": "skipped", "reason": _BRIDGE_UPDATE_HINT}
+        raise
+    available = set(((BRIDGE.capabilities or {}).get("devices") or {}).get("audio_effects") or [])
+    rets = []
+    for spec in PULSE_RETURNS:
+        r = await _ensure_return(spec, returns, available)
+        rets.append(r)
+        if r["action"] == "created":
+            returns.append({"return_index": r["return_index"], "name": r["name"], "devices": [{"name": r["device"]}]})
+
+    levels = _style_sends(style)
+    state = _read_palette_state()
+    sends: list[dict] = []
+    for p in PULSE_TRACK_PLAN:
+        ti, role = int(p["track_index"]), p["role"]
+        try:
+            current = (await _bridge_call("get_track", {"track_index": ti}) or {}).get("sends") or []
+        except BridgeError:
+            continue
+        row = {"track_index": ti, "role": role, "set": {}, "kept": {}}
+        for r in rets:
+            ri = r.get("return_index")
+            if ri is None or r["action"] == "failed" or ri >= len(current):
+                continue
+            key = f"{ti}:send:{r['key']}"
+            want = float(levels.get(r["key"], {}).get(role, 0.0))
+            prior = (state.get(key) or {}).get("value")
+            now = float(current[ri])
+            if now > 0.001 and (prior is None or abs(now - float(prior)) > 0.01):
+                row["kept"][r["key"]] = round(now, 3)
+                continue
+            if abs(now - want) > 0.001:
+                await _bridge_call("set_send", {"track_index": ti, "send_index": ri, "value": want})
+            state[key] = {"style": style, "value": want}
+            row["set"][r["key"]] = want
+        sends.append(row)
+    _write_palette_state(state)
+
+    failed = any(r["action"] == "failed" for r in rets)
+    done = [r for r in rets if r["action"] not in ("failed", "skipped")]
+    return {"action": "failed" if failed else ("applied" if done else "skipped"), "returns": rets, "sends": sends}
 
 
 class PaletteRequest(BaseModel):

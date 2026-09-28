@@ -563,6 +563,105 @@
       .smp-row .kb-meta { white-space: nowrap; }
       .smp-row button { padding: 6px 10px; font-size: 13px; }
       @media (max-width: 700px) { .smp-row { flex-wrap: wrap; } }
+
+      /* Perform */
+      .perf-deck {
+        position: sticky; top: -30px; z-index: 5;
+        display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+        background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+        padding: 14px 18px; margin-bottom: 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      }
+      .perf-play {
+        width: 56px; height: 56px; border-radius: 50%; border: none; cursor: pointer;
+        background: var(--success); color: #06120d; font-size: 22px; flex: none;
+      }
+      .perf-play.is-playing { background: var(--bg-input); color: var(--text-main); border: 2px solid var(--success); }
+      .perf-pos-num, .perf-tempo-num { font-family: var(--font-mono, ui-monospace, monospace); font-size: 26px; font-weight: 600; color: white; line-height: 1.1; min-width: 64px; }
+      .perf-beats { display: flex; gap: 5px; margin-top: 6px; }
+      .perf-beats i { width: 12px; height: 6px; border-radius: 3px; background: var(--border); }
+      .perf-beats i.on { background: var(--accent); }
+      .perf-beats i.on.downbeat { background: var(--success); }
+      .perf-tempo { display: flex; align-items: center; gap: 8px; text-align: center; }
+      .perf-mini {
+        width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border);
+        background: transparent; color: var(--text-main); cursor: pointer; font-size: 16px;
+      }
+      .perf-mini:hover { background: rgba(255, 255, 255, 0.06); }
+      .perf-label { font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; color: var(--text-muted); }
+      .perf-nownext { font-size: 15px; line-height: 1.6; min-width: 150px; flex: 1; color: var(--text-main); }
+      .perf-nownext .perf-label { display: inline-block; width: 38px; }
+      #perfNow { color: var(--success); font-weight: 600; }
+      #perfNext { color: var(--accent); font-weight: 600; }
+      .perf-deck-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .perf-auto.on { background: rgba(99, 102, 241, 0.18); border-color: var(--accent); color: white; }
+      .perf-panic { color: var(--danger); border-color: rgba(239, 68, 68, 0.5); }
+      .perf-deck-status { flex-basis: 100%; font-size: 12px; color: var(--text-muted); min-height: 0; }
+      .perf-deck-status:empty { display: none; }
+      .perf-offline { margin: -4px 0 16px; padding: 10px 14px; border-radius: 10px; font-size: 13px; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.35); }
+
+      .perf-card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+      .perf-card-head h4 { margin: 0; }
+      .perf-hint { font-size: 12px; color: var(--text-muted); }
+      kbd, .kc {
+        font-family: var(--font-mono, ui-monospace, monospace); font-size: 11px; line-height: 1;
+        padding: 2px 5px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-input); color: var(--text-muted);
+      }
+      .kc { position: absolute; top: 8px; right: 8px; }
+
+      .perf-scenes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+      .perf-scene, .perf-part, .perf-pad, .perf-move {
+        position: relative; text-align: left; cursor: pointer; color: var(--text-main);
+        background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px;
+        font-family: inherit; transition: border-color 0.12s, background 0.12s, transform 0.06s;
+      }
+      .perf-scene { min-height: 76px; padding: 12px 14px; font-size: 16px; font-weight: 600; }
+      .perf-scene .perf-scene-num { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); margin-top: 4px; }
+      .perf-scene:hover, .perf-part:hover, .perf-pad:hover, .perf-move:hover { border-color: #4b5563; }
+      .perf-scene.playing { background: rgba(16, 185, 129, 0.16); border-color: var(--success); box-shadow: inset 0 0 0 1px var(--success); }
+      .perf-scene .perf-scene-num:empty::before { content: "\00a0"; }
+      .perf-scene.playing .perf-scene-num { color: var(--success); }
+      .perf-scene.queued { border-color: var(--accent); animation: perfBlink 0.6s steps(2, start) infinite; }
+      .perf-scene.queued .perf-scene-num { color: var(--accent); }
+      .perf-scene.auto-next { border-style: dashed; border-color: var(--accent); }
+      .hit { transform: scale(0.97); border-color: white !important; }
+      @keyframes perfBlink { 50% { background: rgba(99, 102, 241, 0.22); } }
+      @media (prefers-reduced-motion: reduce) { .perf-scene.queued { animation: none; background: rgba(99, 102, 241, 0.18); } }
+
+      .perf-parts { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
+      .perf-part { min-height: 72px; padding: 10px 12px 18px; font-size: 14px; font-weight: 600; }
+      .perf-part .perf-part-state { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); margin-top: 4px; }
+      .perf-part.playing .perf-part-state { color: var(--success); }
+      .perf-part.muted { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.45); color: var(--text-muted); }
+      .perf-part.muted .perf-part-state { color: var(--danger); }
+      .perf-meter { position: absolute; left: 12px; right: 12px; bottom: 8px; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
+      .perf-meter i { display: block; height: 100%; width: 0; background: var(--success); }
+      .perf-part.muted .perf-meter i { background: var(--text-muted); }
+
+      .perf-moves { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+      .perf-move { padding: 14px 16px; min-height: 72px; }
+      .perf-move-name { display: block; font-size: 15px; font-weight: 600; }
+      .perf-move-desc { display: block; font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+      .perf-move.armed { border-color: var(--accent); background: rgba(99, 102, 241, 0.14); }
+      .perf-move-end { border-color: rgba(239, 68, 68, 0.45); }
+      .perf-move-end .perf-move-name { color: var(--danger); }
+      .perf-move-end.armed { background: rgba(239, 68, 68, 0.16); border-color: var(--danger); }
+      .perf-move:disabled { opacity: 0.6; cursor: wait; }
+
+      .perf-vox { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+      .perf-pad { min-height: 56px; padding: 10px 12px; font-size: 14px; font-weight: 600; }
+
+      .perf-more summary { list-style: none; cursor: pointer; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+      .perf-more summary::-webkit-details-marker { display: none; }
+      .perf-more summary h4 { margin: 0; }
+      .perf-more summary h4::before { content: "▸ "; }
+      .perf-more[open] summary h4::before { content: "▾ "; }
+      .perf-more:not([open]) { padding-top: 16px; padding-bottom: 16px; }
+
+      @media (max-width: 700px) {
+        .perf-deck { gap: 10px 14px; padding: 12px; top: -16px; }
+        .perf-nownext { flex-basis: 100%; }
+        .perf-scenes { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+      }
     </style>
   </head>
   <body>
@@ -1045,10 +1144,81 @@
       <div id="view-performance" class="view-section">
         <h2>Perform</h2>
 
+        <!-- Deck: always visible while scrolling. Transport, where you are, what's next. -->
+        <div class="perf-deck" id="perfDeck">
+          <button id="perfPlay" class="perf-play" title="Play / stop (Space)" aria-label="Play">
+            <span class="perf-play-icon" aria-hidden="true">▶</span>
+          </button>
+          <div class="perf-pos">
+            <div id="perfPos" class="perf-pos-num">–</div>
+            <div class="perf-beats" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div class="perf-tempo" title="Tempo ([ and ] nudge by 1 BPM)">
+            <button id="perfTempoDown" class="perf-mini" aria-label="Tempo down">−</button>
+            <div><div id="perfTempo" class="perf-tempo-num">–</div><div class="perf-label">BPM</div></div>
+            <button id="perfTempoUp" class="perf-mini" aria-label="Tempo up">+</button>
+          </div>
+          <div class="perf-nownext">
+            <div><span class="perf-label">Now</span> <span id="perfNow">–</span></div>
+            <div><span class="perf-label">Next</span> <span id="perfNext">–</span></div>
+          </div>
+          <div class="perf-deck-actions">
+            <button id="perfAuto" class="secondary perf-auto" title="Play the arrangement from Compose, scene by scene">Autopilot</button>
+            <button id="perfStopClips" class="secondary perf-panic" title="Stop every clip, in time. The transport keeps running.">Stop clips</button>
+          </div>
+          <div id="perfAutoStatus" class="perf-deck-status"></div>
+        </div>
+        <div id="perfOffline" class="perf-offline" style="display: none;"></div>
+
         <div class="card">
-          <h4>Vox Pads</h4>
-          <p class="control-label">Fire the clips on your vox track: the PS-VOX track that Compose → Voice → Send to Live fills, or any track you pick. Pad 1 fires the first slot, pad 2 the next, and so on. Keys 1–8 fire the pads while this page is open.</p>
-          <div class="row" style="margin-top: 12px;">
+          <div class="perf-card-head">
+            <h4>Scenes</h4>
+            <span class="perf-hint">Tap to launch on the next bar · keys <kbd>1</kbd>–<kbd>0</kbd></span>
+          </div>
+          <div id="perfScenes" class="perf-scenes"></div>
+        </div>
+
+        <div class="card">
+          <div class="perf-card-head">
+            <h4>Parts</h4>
+            <span class="perf-hint">Tap to mute or bring back · keys <kbd>Q</kbd>–<kbd>P</kbd></span>
+          </div>
+          <div id="perfParts" class="perf-parts"></div>
+        </div>
+
+        <div class="card">
+          <div class="perf-card-head">
+            <h4>Moves</h4>
+          </div>
+          <div class="perf-moves">
+            <button id="btnWashDrop" class="perf-move" title="Sweep the drum and bass macros over 4 bars (B)">
+              <span class="perf-move-name">Wash &amp; Drop</span>
+              <span class="perf-move-desc">Sweeps drums and bass over 4 bars</span>
+              <kbd class="kc">B</kbd>
+            </button>
+            <button id="btnBreakdown" class="perf-move" title="Mute drums and bass from the next bar, back on the downbeat 4 bars later (N). Press again to drop on the next bar.">
+              <span class="perf-move-name">Breakdown → Drop</span>
+              <span class="perf-move-desc">Drums and bass out for 4 bars</span>
+              <kbd class="kc">N</kbd>
+            </button>
+            <button id="btnDelayThrow" class="perf-move" title="Open the delay send on stabs, chords and the vox track for one beat (V)">
+              <span class="perf-move-name">Delay Throw</span>
+              <span class="perf-move-desc">Echoes the next beat of stabs, chords, vox</span>
+              <kbd class="kc">V</kbd>
+            </button>
+            <button id="btnFadeOut" class="perf-move perf-move-end" title="Fade the Pulse tracks out over 4 seconds, then stop">
+              <span class="perf-move-name">Fade Out &amp; Stop</span>
+              <span class="perf-move-desc">Ends the set over 4 seconds · press twice</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="perf-card-head">
+            <h4>Vox Pads</h4>
+            <span class="perf-hint">Keys <kbd>A</kbd>–<kbd>K</kbd></span>
+          </div>
+          <div class="row">
             <label class="control-label" style="margin: 0;" for="voxTrack">Vox track</label>
             <select id="voxTrack" style="display: none; width: auto; min-width: 220px;"></select>
             <input id="voxTrackIndex" type="number" min="1" placeholder="Track number" style="width: 140px;" />
@@ -1057,21 +1227,33 @@
             <div id="voxStatus" style="margin-left: auto; font-size: 12px; color: var(--text-muted);"></div>
           </div>
           <div id="voxTrackHint" class="kb-meta" style="margin-top: 6px;"></div>
-          <div class="grid-3" style="margin-top: 12px;">
-            <button class="secondary vox-pad" data-pad="1">Pad 1</button>
-            <button class="secondary vox-pad" data-pad="2">Pad 2</button>
-            <button class="secondary vox-pad" data-pad="3">Pad 3</button>
-            <button class="secondary vox-pad" data-pad="4">Pad 4</button>
-            <button class="secondary vox-pad" data-pad="5">Pad 5</button>
-            <button class="secondary vox-pad" data-pad="6">Pad 6</button>
-            <button class="secondary vox-pad" data-pad="7">Pad 7</button>
-            <button class="secondary vox-pad" data-pad="8">Pad 8</button>
+          <div class="perf-vox" style="margin-top: 12px;">
+            <button class="vox-pad perf-pad" data-pad="1">Pad 1<kbd class="kc">A</kbd></button>
+            <button class="vox-pad perf-pad" data-pad="2">Pad 2<kbd class="kc">S</kbd></button>
+            <button class="vox-pad perf-pad" data-pad="3">Pad 3<kbd class="kc">D</kbd></button>
+            <button class="vox-pad perf-pad" data-pad="4">Pad 4<kbd class="kc">F</kbd></button>
+            <button class="vox-pad perf-pad" data-pad="5">Pad 5<kbd class="kc">G</kbd></button>
+            <button class="vox-pad perf-pad" data-pad="6">Pad 6<kbd class="kc">H</kbd></button>
+            <button class="vox-pad perf-pad" data-pad="7">Pad 7<kbd class="kc">J</kbd></button>
+            <button class="vox-pad perf-pad" data-pad="8">Pad 8<kbd class="kc">K</kbd></button>
           </div>
+          <p class="control-label" style="margin: 10px 0 0;">Fires the clips on your vox track: the PS-VOX track that Compose → Voice → Send to Live fills, or any track you pick. Pad 1 fires the first slot, pad 2 the next, and so on.</p>
         </div>
 
-        <div class="card">
-          <h4>Recorder</h4>
-          <p class="control-label">Record audio from your microphone and save it to the server.</p>
+        <details class="card perf-more" id="perfKnobsMore">
+          <summary><h4>Track Knobs</h4><span class="perf-hint">The first 8 parameters of the first device on each track</span></summary>
+          <div class="track-knob-controls" style="margin-top: 12px;">
+            <input id="perfTrackFilter" type="text" placeholder="Filter tracks... (e.g. drums, bass, vox)" />
+            <button id="perfKnobsReload" class="secondary">Reload</button>
+            <button id="perfKnobsExpand" class="secondary">Expand All</button>
+            <button id="perfKnobsCollapse" class="secondary">Collapse All</button>
+            <div id="perfKnobsStatus" style="margin-left: auto; font-size: 12px; color: var(--text-muted);"></div>
+          </div>
+          <div id="perfKnobPanels" style="margin-top: 12px;"></div>
+        </details>
+
+        <details class="card perf-more">
+          <summary><h4>Recorder</h4><span class="perf-hint">Record from your microphone and save it to the server</span></summary>
           <div class="row" style="margin-top: 12px;">
             <input id="recLabel" type="text" placeholder="label (optional)" style="flex: 1; min-width: 200px;" />
             <select id="recFx" style="width: 160px;">
@@ -1111,37 +1293,9 @@
               <div id="recSaved" style="font-size: 12px; color: var(--text-muted);"></div>
             </div>
           </div>
-        </div>
-        
-        <div class="card">
-          <h4>Scenes</h4>
-          <p class="control-label">Launch a whole scene row in Live (every track's clip in that slot).</p>
-          <div id="sceneButtons" class="grid-3" style="margin-top: 16px;"></div>
-        </div>
+        </details>
 
-        <div class="card">
-           <h4>Transitions</h4>
-           <p class="control-label">Fade Out ramps the Pulse tracks' volume down over 4 seconds, then stops. Wash &amp; Drop sweeps the drum and bass macros over 4 bars.</p>
-           <div class="row">
-             <button id="btnFadeOut" class="secondary" style="color: var(--danger); border-color: var(--danger);">Fade Out & Stop (4s)</button>
-             <button id="btnWashDrop" class="primary">Wash & Drop (4 Bars)</button>
-           </div>
-        </div>
-
-        <div class="card">
-          <h4>Track Knobs</h4>
-          <p class="control-label">The first 8 parameters of the first device on each track.</p>
-
-          <div class="track-knob-controls" style="margin-top: 12px;">
-            <input id="perfTrackFilter" type="text" placeholder="Filter tracks... (e.g. drums, bass, vox)" />
-            <button id="perfKnobsReload" class="secondary">Reload</button>
-            <button id="perfKnobsExpand" class="secondary">Expand All</button>
-            <button id="perfKnobsCollapse" class="secondary">Collapse All</button>
-            <div id="perfKnobsStatus" style="margin-left: auto; font-size: 12px; color: var(--text-muted);"></div>
-          </div>
-
-          <div id="perfKnobPanels" style="margin-top: 12px;"></div>
-        </div>
+        <p class="perf-hint" style="text-align: center;">Shortcuts work while this page has focus: <kbd>Space</kbd> play/stop · <kbd>1</kbd>–<kbd>0</kbd> scenes · <kbd>Q</kbd>–<kbd>P</kbd> parts · <kbd>A</kbd>–<kbd>K</kbd> vox · <kbd>B</kbd> wash · <kbd>[</kbd> <kbd>]</kbd> tempo</p>
       </div>
 
       <!-- SAMPLES VIEW -->
@@ -1570,7 +1724,10 @@
         if (main) main.scrollTop = 0;
 
         if (v === 'performance') {
-          loadPerformanceKnobs();
+          if (document.getElementById('perfKnobsMore')?.open) loadPerformanceKnobs();
+          if (window.PulseLive) window.PulseLive.refresh();  // scene names change without an event
+          renderPerform();
+          perfPollAuto();
         }
         if (v === 'samples') {
           smpLoadList();
@@ -2312,7 +2469,7 @@
         return rows;
       }
 
-      const ROLE_LABELS = { drums: "Drums", bass: "Bass", perc: "Perc", stabs: "Stabs", fx: "FX", chords: "Chords" };
+      const ROLE_LABELS = { drums: "Drums", bass: "Bass", perc: "Perc", stabs: "Stabs", fx: "FX", chords: "Chords", pad: "Pad" };
 
       // One line for the drum-bus processing some styles add after the kit (Drum Buss, or Saturator
       // on editions without it). Nothing is shown when the style has none and there was none to remove.
@@ -2337,10 +2494,28 @@
         return `<div style="margin-top: 8px;"><span class="chip ${cls}">Drum bus</span> ${escapeHtml(text + track)}${params ? ` <span class="muted">(${escapeHtml(params)})</span>` : ""}${unmatched}</div>`;
       }
 
+      // One line for the reverb/delay returns and the sends Pulse set on its tracks.
+      function returnsLine(rt) {
+        if (!rt || typeof rt !== "object" || !rt.action) return "";
+        if (!Array.isArray(rt.returns)) {
+          const cls = rt.action === "failed" ? "no" : "";
+          return `<div style="margin-top: 8px;"><span class="chip ${cls}">Returns</span> ${escapeHtml(rt.action)}${rt.reason || rt.error ? ": " + escapeHtml(rt.reason || rt.error) : ""}</div>`;
+        }
+        const verb = { created: "added", reused: "using your", repaired: "repaired", skipped: "skipped", failed: "failed" };
+        const parts = rt.returns.map((r) => {
+          const what = r.action === "reused" ? `${verb.reused} ${r.name || r.device}` : `${r.device || r.key} ${verb[r.action] || r.action}`;
+          return what + (r.reason || r.error ? ` (${r.reason || r.error})` : "");
+        });
+        const kept = (rt.sends || []).filter((s) => s.kept && Object.keys(s.kept).length).map((s) => ROLE_LABELS[s.role] || s.role);
+        const note = kept.length ? ` <span class="muted">Sends you'd changed were kept on: ${escapeHtml(kept.join(", "))}.</span>` : "";
+        const cls = rt.action === "failed" ? "no" : rt.action === "skipped" ? "" : "ok";
+        return `<div style="margin-top: 8px;"><span class="chip ${cls}">Returns</span> ${escapeHtml(parts.join(", "))}${note}</div>`;
+      }
+
       // Table of what each Pulse track got: kept / loaded (with the AI's reason) / fallback / failed.
-      function renderInstrumentResults(el, results, drumBus) {
+      function renderInstrumentResults(el, results, drumBus, returns) {
         if (!Array.isArray(results) || !results.length) {
-          el.innerHTML = '<span class="muted">Instruments were not changed.</span>' + drumBusLine(drumBus);
+          el.innerHTML = '<span class="muted">Instruments were not changed.</span>' + drumBusLine(drumBus) + returnsLine(returns);
           return;
         }
         const badge = { kept: "kept", loaded: "loaded", fallback: "fallback", failed: "failed" };
@@ -2356,7 +2531,7 @@
               <td>${escapeHtml(name)} <span class="chip ${cls}">${escapeHtml(badge[action] || action)}</span></td>
               <td class="muted">${escapeHtml(why)}</td></tr>`;
           }).join("")
-        }</tbody></table>` + drumBusLine(drumBus);
+        }</tbody></table>` + drumBusLine(drumBus) + returnsLine(returns);
       }
 
       document.getElementById("trackRepick")?.addEventListener("click", async () => {
@@ -2371,7 +2546,7 @@
           ].filter(Boolean).join("\n\n");
           const resp = await post("/instruments/palette", { style, prompt: prompt || null, replace: true });
           if (!resp || resp.error) throw new Error(resp && resp.error ? resp.error : "palette_failed");
-          if (el) renderInstrumentResults(el, resp.results, resp.drum_bus);
+          if (el) renderInstrumentResults(el, resp.results, resp.drum_bus, resp.returns);
           log(`Instruments re-picked for ${style}`);
         } catch (e) {
           log("Re-pick instruments failed: " + e.message);
@@ -2415,7 +2590,7 @@
 
         renderTrackPlaylist(arr);
 
-        if (instEl) renderInstrumentResults(instEl, resp && resp.instruments ? resp.instruments.applied : null, resp && resp.instruments ? resp.instruments.drum_bus : null);
+        if (instEl) renderInstrumentResults(instEl, resp && resp.instruments ? resp.instruments.applied : null, resp && resp.instruments ? resp.instruments.drum_bus : null, resp && resp.instruments ? resp.instruments.returns : null);
       }
 
       async function startFullTrackAutoplay(arrangement, startSlotIndex, barsPerScene, clipBars) {
@@ -3949,32 +4124,330 @@
         });
       });
 
-      // Scene buttons: one per scene in the Live set (the live-state script calls renderSceneButtons
-      // when the scene count changes); 8 until Live reports its count.
-      function renderSceneButtons(count) {
-        const box = document.getElementById("sceneButtons");
-        if (!box) return;
-        const n = Math.max(1, Math.min(32, int(count) || 8));
-        if (box.childElementCount === n) return;
-        box.innerHTML = Array.from({ length: n }, (_, i) => `<button class="scene-btn secondary" data-scene="${i}">Scene ${i + 1}</button>`).join("");
-      }
-      window.renderSceneButtons = renderSceneButtons;
-      renderSceneButtons(8);
+      // ---------------------------------------------------------------- Perform deck, scenes, parts
+      // Rendered from the live state the PulseBridge event stream keeps (window.PulseLive), so
+      // what's playing, queued and muted always matches Live.
+      const PERF_PART_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO", "KeyP"];
+      const PERF_VOX_KEYS = ["KeyA", "KeyS", "KeyD", "KeyF", "KeyG", "KeyH", "KeyJ", "KeyK"];
+      const PERF_MAX_SCENES = 32;
+      const PERF_MAX_PARTS = 16;
+      const perf = { plan: {}, scenesKey: "", partsKey: "", auto: null, autoTimer: null, fadeArmedUntil: 0, fadeTimer: null };
 
-      document.getElementById("sceneButtons")?.addEventListener("click", async (ev) => {
-        const btn = ev.target instanceof HTMLElement ? ev.target.closest(".scene-btn") : null;
-        if (!btn) return;
+      const perfLive = () => (window.PulseLive ? window.PulseLive.state : null);
+      const perfActive = () => !!document.getElementById("view-performance")?.classList.contains("active");
+
+      async function perfLoadPlan() {
         try {
-          await post("/scenes/fire", { scene_index: int(btn.dataset.scene) });
+          const r = await get("/tracks/plan");
+          perf.plan = {};
+          for (const t of (r && r.tracks) || []) perf.plan[int(t.track_index)] = t;
+          perf.partsKey = "";
+          renderPerform();
+        } catch (e) { /* older server: parts fall back to track names */ }
+      }
+
+      function perfFlash(el) {
+        if (!el) return;
+        el.classList.add("hit");
+        setTimeout(() => el.classList.remove("hit"), 120);
+      }
+
+      // Pulse tracks show their role (Drums, Pad…) while they still carry Pulse's PS-TRK name.
+      function perfPartLabel(t) {
+        const p = perf.plan[t.index];
+        if (p && /^PS-TRK-/i.test(t.name || "")) return ROLE_LABELS[p.role] || p.name || t.name;
+        return t.name || `Track ${t.index + 1}`;
+      }
+
+      // The scene most tracks are playing, and the one most tracks have queued.
+      function perfSceneState(tracks) {
+        const playing = {}, queued = {};
+        for (const t of tracks) {
+          if (t.playing_slot_index >= 0) playing[t.playing_slot_index] = (playing[t.playing_slot_index] || 0) + 1;
+          if (t.fired_slot_index >= 0 && t.fired_slot_index !== t.playing_slot_index) queued[t.fired_slot_index] = (queued[t.fired_slot_index] || 0) + 1;
+        }
+        const top = (m) => { let best = -1, n = 0; for (const [k, v] of Object.entries(m)) if (v > n) { best = int(k); n = v; } return best; };
+        return { playing: top(playing), queued: top(queued) };
+      }
+
+      function perfSceneName(song, i) {
+        const n = song && Array.isArray(song.scene_names) ? String(song.scene_names[i] || "").trim() : "";
+        return n || `Scene ${i + 1}`;
+      }
+
+      function renderPerform() {
+        if (!perfActive()) return;
+        const L = perfLive();
+        const connected = !!(L && L.bridge && L.bridge.connected);
+        const song = L && L.song;
+        const tracks = (L && L.tracks) || [];
+        const $ = (id) => document.getElementById(id);
+
+        const off = $("perfOffline");
+        if (off) {
+          off.style.display = connected ? "none" : "block";
+          off.innerHTML = connected ? "" : "<strong>Live isn't connected through PulseBridge.</strong> Buttons still send to Live over OSC if it's set up, but this page can't show what's playing. See System for setup.";
+        }
+
+        // Deck
+        const playing = !!(song && song.is_playing);
+        const play = $("perfPlay");
+        if (play) {
+          play.classList.toggle("is-playing", playing);
+          play.querySelector(".perf-play-icon").textContent = playing ? "■" : "▶";
+          play.setAttribute("aria-label", playing ? "Stop" : "Play");
+        }
+        const b = playing && L ? L.beat : null;
+        const pos = $("perfPos");
+        if (pos) pos.textContent = b ? `${b.bar + 1}.${b.beat_in_bar + 1}` : (playing ? "…" : "–");
+        document.querySelectorAll("#perfDeck .perf-beats i").forEach((d, i) => {
+          const on = !!b && (b.beat_in_bar % 4) === i;
+          d.classList.toggle("on", on);
+          d.classList.toggle("downbeat", on && b.beat_in_bar === 0);
+        });
+        const tempo = $("perfTempo");
+        if (tempo) tempo.textContent = song ? String(Math.round(song.tempo * 10) / 10) : "–";
+
+        const st = perfSceneState(tracks);
+        const autoNext = perfAutoNextScene();
+        const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+        set("perfNow", st.playing >= 0 ? perfSceneName(song, st.playing) : (playing ? "no scene" : "stopped"));
+        set("perfNext", st.queued >= 0 ? `${perfSceneName(song, st.queued)} (next bar)` : autoNext ? `${autoNext.label} (autopilot)` : "–");
+
+        // Scenes
+        const n = Math.max(1, Math.min(PERF_MAX_SCENES, song ? int(song.num_scenes) : 8));
+        const names = Array.from({ length: n }, (_, i) => perfSceneName(song, i));
+        const box = $("perfScenes");
+        if (box) {
+          const key = names.join("\u0000");
+          if (key !== perf.scenesKey) {
+            perf.scenesKey = key;
+            box.innerHTML = names.map((name, i) => {
+              const k = i < 10 ? `<kbd class="kc">${(i + 1) % 10}</kbd>` : "";
+              return `<button class="perf-scene" data-scene="${i}" title="Launch ${escapeHtml(name)}">${escapeHtml(name)}<span class="perf-scene-num"></span>${k}</button>`;
+            }).join("");
+          }
+          box.querySelectorAll(".perf-scene").forEach((el) => {
+            const i = int(el.dataset.scene);
+            el.classList.toggle("playing", i === st.playing);
+            el.classList.toggle("queued", i === st.queued);
+            el.classList.toggle("auto-next", !!autoNext && i === autoNext.scene_index && i !== st.queued);
+            // Named scenes also show their number; unnamed ones already read "Scene N".
+            const num = names[i] === `Scene ${i + 1}` ? "" : `Scene ${i + 1}`;
+            const state = i === st.playing ? "playing" : i === st.queued ? "next bar" : "";
+            const sub = el.querySelector(".perf-scene-num");
+            if (sub) sub.textContent = [num, state].filter(Boolean).join(" · ");
+          });
+        }
+
+        // Parts
+        const parts = tracks.slice(0, PERF_MAX_PARTS);
+        const pbox = $("perfParts");
+        if (pbox) {
+          const key = parts.map((t) => `${t.index}:${perfPartLabel(t)}`).join("\u0000");
+          if (key !== perf.partsKey) {
+            perf.partsKey = key;
+            pbox.innerHTML = parts.length
+              ? parts.map((t, i) => {
+                  const k = i < PERF_PART_KEYS.length ? `<kbd class="kc">${PERF_PART_KEYS[i].slice(3)}</kbd>` : "";
+                  return `<button class="perf-part" data-track="${t.index}" title="${escapeHtml(t.name)}: mute / unmute">${escapeHtml(perfPartLabel(t))}<span class="perf-part-state"></span>${k}<span class="perf-meter"><i data-meter="${t.index}"></i></span></button>`;
+                }).join("")
+              : `<span class="muted">${connected ? "No tracks in this set yet." : "Connect Live to see its tracks."}</span>`;
+          }
+          pbox.querySelectorAll(".perf-part").forEach((el) => {
+            const t = tracks[int(el.dataset.track)];
+            if (!t) return;
+            el.classList.toggle("muted", !!t.mute);
+            el.classList.toggle("playing", t.playing_slot_index >= 0);
+            el.setAttribute("aria-pressed", t.mute ? "false" : "true");
+            const state = el.querySelector(".perf-part-state");
+            if (state) state.textContent = t.mute ? "muted" : t.playing_slot_index >= 0 ? "playing" : "on";
+          });
+        }
+      }
+      window.renderPerform = renderPerform;
+
+      // Level bars on the part buttons, fed by the visualizer's meter stream.
+      window.renderPerformMeters = (shown) => {
+        if (!perfActive() || !shown) return;
+        document.querySelectorAll("#perfParts [data-meter]").forEach((el) => {
+          el.style.width = `${Math.round(Math.min(1, (shown.tracks || [])[int(el.dataset.meter)] || 0) * 100)}%`;
+        });
+      };
+
+      async function perfFireScene(i, { manual = true } = {}) {
+        perfFlash(document.querySelector(`.perf-scene[data-scene="${i}"]`));
+        // Launching by hand takes over from the autopilot, which would otherwise override it.
+        if (manual && perf.auto && perf.auto.running) await perfStopAuto("You took over: autopilot off.");
+        try {
+          await post("/scenes/fire", { scene_index: i });
         } catch (e) {
           log("Scene fire failed: " + e.message);
         }
+      }
+
+      async function perfToggleMute(ti) {
+        const L = perfLive();
+        const t = L && L.tracks ? L.tracks[ti] : null;
+        perfFlash(document.querySelector(`.perf-part[data-track="${ti}"]`));
+        const mute = !(t && t.mute);
+        if (t) { t.mute = mute; renderPerform(); }  // the track.mute event confirms it
+        try {
+          await post("/tracks/mute", { track_index: ti, mute });
+        } catch (e) {
+          if (t) { t.mute = !mute; renderPerform(); }
+          log("Mute failed: " + e.message);
+        }
+      }
+
+      async function perfTogglePlay() {
+        const L = perfLive();
+        const playing = !!(L && L.song && L.song.is_playing);
+        perfFlash(document.getElementById("perfPlay"));
+        try {
+          await post(playing ? "/transport/stop" : "/transport/play", {});
+        } catch (e) {
+          log("Transport failed: " + e.message);
+        }
+      }
+
+      async function perfNudgeTempo(delta) {
+        const L = perfLive();
+        const now = L && L.song ? Number(L.song.tempo) : parseFloat(document.getElementById("tempo")?.value || "0");
+        if (!Number.isFinite(now) || now <= 0) return;
+        const bpm = Math.max(20, Math.min(999, Math.round(now + delta)));
+        if (L && L.song) { L.song.tempo = bpm; renderPerform(); }
+        try {
+          await post("/transport/tempo", { bpm });
+        } catch (e) {
+          log("Tempo change failed: " + e.message);
+        }
+      }
+
+      // ---- Autopilot: plays the Compose arrangement playlist, one scene per step.
+      function perfAutoSteps() {
+        const playlist = readTrackPlaylist();
+        const slots = _sceneSlotsByName();
+        return playlist
+          .map((st) => ({ label: st.scene, repeats: st.repeats, scene_index: slots[String(st.scene || "").trim().toLowerCase()] }))
+          .filter((st) => Number.isInteger(st.scene_index));
+      }
+
+      function perfAutoNextScene() {
+        const a = perf.auto;
+        if (!a || !a.running || !Number.isInteger(a.current_step)) return null;
+        const steps = perfAutoSteps();
+        return steps.length ? steps[(a.current_step + 1) % steps.length] : null;
+      }
+
+      function renderPerfAuto() {
+        const btn = document.getElementById("perfAuto");
+        const status = document.getElementById("perfAutoStatus");
+        const a = perf.auto;
+        const on = !!(a && a.running);
+        if (btn) {
+          btn.classList.toggle("on", on);
+          btn.textContent = on ? "Autopilot on" : "Autopilot";
+        }
+        if (!status) return;
+        if (on && Number.isInteger(a.current_step)) {
+          const steps = perfAutoSteps();
+          const cur = steps[a.current_step];
+          status.textContent = cur ? `Autopilot: step ${a.current_step + 1} of ${steps.length}, ${cur.label} × ${cur.repeats}. Launch any scene to take over.` : "Autopilot is playing.";
+        } else if (a && a.message) {
+          status.textContent = a.message;
+        } else {
+          status.textContent = "";
+        }
+      }
+
+      async function perfPollAuto() {
+        clearTimeout(perf.autoTimer);
+        if (!perfActive() || document.hidden) return;
+        try {
+          const r = await get("/autoplay/status");
+          const message = perf.auto && !r.running ? perf.auto.message : null;
+          perf.auto = { ...r, message };
+        } catch (e) { /* keep the last state */ }
+        renderPerfAuto();
+        renderPerform();
+        perf.autoTimer = setTimeout(perfPollAuto, 1000);
+      }
+
+      async function perfStopAuto(message) {
+        try { await post("/autoplay/stop", {}); } catch (e) { /* already stopped */ }
+        _trackAutoPlayStop = null;
+        perf.auto = { running: false, current_step: null, message: message || "" };
+        renderPerfAuto();
+        renderPerform();
+      }
+
+      document.getElementById("perfAuto")?.addEventListener("click", async () => {
+        if (perf.auto && perf.auto.running) return perfStopAuto("Autopilot off.");
+        try {
+          const clipBars = int(document.getElementById("trackClipBars")?.value || 8);
+          await startFullTrackAutoplay(readTrackPlaylist(), 0, 1, clipBars);
+          perf.auto = { running: true, current_step: 0, message: "" };
+        } catch (e) {
+          perf.auto = { running: false, message: e.message.includes("Nothing to play") ? "Nothing to play yet: generate or load a full track in Compose, then the arrangement plays from here." : "Autopilot failed: " + e.message };
+        }
+        renderPerfAuto();
+        perfPollAuto();
       });
+
+      document.getElementById("perfPlay")?.addEventListener("click", perfTogglePlay);
+      document.getElementById("perfTempoDown")?.addEventListener("click", () => perfNudgeTempo(-1));
+      document.getElementById("perfTempoUp")?.addEventListener("click", () => perfNudgeTempo(1));
+      document.getElementById("perfStopClips")?.addEventListener("click", async () => {
+        perfFlash(document.getElementById("perfStopClips"));
+        if (perf.auto && perf.auto.running) await perfStopAuto("Clips stopped: autopilot off.");
+        try {
+          await post("/clips/stop_all", {});
+        } catch (e) {
+          log("Stop clips failed: " + e.message);
+        }
+      });
+
+      document.getElementById("perfScenes")?.addEventListener("click", (ev) => {
+        const btn = ev.target instanceof HTMLElement ? ev.target.closest(".perf-scene") : null;
+        if (btn) perfFireScene(int(btn.dataset.scene));
+      });
+      document.getElementById("perfParts")?.addEventListener("click", (ev) => {
+        const btn = ev.target instanceof HTMLElement ? ev.target.closest(".perf-part") : null;
+        if (btn) perfToggleMute(int(btn.dataset.track));
+      });
+
+      // Knobs query every track, so they only load once their section is opened.
+      document.getElementById("perfKnobsMore")?.addEventListener("toggle", (ev) => {
+        if (ev.target.open) loadPerformanceKnobs();
+      });
+
+      perfLoadPlan();
 
       // Transitions
       document.getElementById("btnFadeOut")?.addEventListener("click", async () => {
         const btn = document.getElementById("btnFadeOut");
+        const desc = btn.querySelector(".perf-move-desc");
+        if (Date.now() > perf.fadeArmedUntil) {
+          // First press only arms it, so a stray click can't end the set.
+          perf.fadeArmedUntil = Date.now() + 2500;
+          btn.classList.add("armed");
+          if (desc) desc.textContent = "Press again to fade out";
+          clearTimeout(perf.fadeTimer);
+          perf.fadeTimer = setTimeout(() => {
+            perf.fadeArmedUntil = 0;
+            btn.classList.remove("armed");
+            if (desc) desc.textContent = "Ends the set over 4 seconds · press twice";
+          }, 2500);
+          return;
+        }
+        perf.fadeArmedUntil = 0;
+        clearTimeout(perf.fadeTimer);
+        btn.classList.remove("armed");
+        if (desc) desc.textContent = "Fading out…";
+        if (perf.auto && perf.auto.running) await perfStopAuto("Faded out: autopilot off.");
         setBusy(btn, true);
+        setTimeout(() => { if (desc) desc.textContent = "Ends the set over 4 seconds · press twice"; }, 4500);
         try {
           await post("/transport/fade_out", { duration_ms: 4000 });
         } catch (e) {
@@ -3993,6 +4466,58 @@
           log("Wash & Drop failed: " + e.message);
         } finally {
           setBusy(btn, false);
+        }
+      });
+
+      // Moves that wait on Live's grid answer at once; the server times them. A move that can't
+      // run (stopped transport, no bridge) says why in its own description for a moment.
+      function perfMoveNote(btn, text, ms = 2500) {
+        const desc = btn.querySelector(".perf-move-desc");
+        if (!desc) return;
+        if (!desc.dataset.idle) desc.dataset.idle = desc.textContent;
+        desc.textContent = text;
+        clearTimeout(btn._noteTimer);
+        if (ms) btn._noteTimer = setTimeout(() => { desc.textContent = desc.dataset.idle; }, ms);
+      }
+
+      async function perfWatchBreakdown(btn) {
+        clearTimeout(perf.breakdownTimer);
+        try {
+          const r = await get("/moves/status");
+          if (r.breakdown && r.breakdown.running) {
+            perf.breakdownTimer = setTimeout(() => perfWatchBreakdown(btn), 500);
+            return;
+          }
+        } catch (e) { /* treat as done */ }
+        btn.classList.remove("armed");
+        perfMoveNote(btn, "Dropped", 1500);
+      }
+
+      document.getElementById("btnBreakdown")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnBreakdown");
+        try {
+          const r = await post("/moves/breakdown", { bars: 4 });
+          if (!r.ok) return perfMoveNote(btn, r.hint || r.error);
+          if (r.status === "dropping") {
+            perfMoveNote(btn, "Dropping on the next bar", 0);
+            return perfWatchBreakdown(btn);
+          }
+          btn.classList.add("armed");
+          perfMoveNote(btn, "Breaking down · press again to drop early", 0);
+          perfWatchBreakdown(btn);
+        } catch (e) {
+          log("Breakdown failed: " + e.message);
+        }
+      });
+
+      document.getElementById("btnDelayThrow")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnDelayThrow");
+        const vox = pickedTrackIndex("vox");
+        try {
+          const r = await post("/moves/delay_throw", { beats: 1, track_indices: Number.isInteger(vox) ? [vox] : [] });
+          if (!r.ok) perfMoveNote(btn, r.hint || r.error);
+        } catch (e) {
+          log("Delay Throw failed: " + e.message);
         }
       });
 
@@ -4074,17 +4599,40 @@
         }
       });
 
-      // Keyboard shortcuts for Vox Pads (1-8)
+      // Perform shortcuts. Physical key positions (e.code), so they sit in the same place on any
+      // keyboard layout: number row = scenes, QWERTY row = parts, home row = vox pads.
       document.addEventListener("keydown", (e) => {
-        if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
-        if (e.ctrlKey || e.metaKey || e.altKey) return;
-        if (!document.getElementById("view-performance")?.classList.contains("active")) return;
-        const key = e.key;
-        if (key >= "1" && key <= "8") {
-          const pad = parseInt(key, 10);
-          const btn = document.querySelector(`.vox-pad[data-pad="${pad}"]`);
-          if (btn) btn.click();
+        const tag = e.target && e.target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target && e.target.isContentEditable)) return;
+        if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+        if (!perfActive()) return;
+        const code = e.code || "";
+        let handled = true;
+        if (code === "Space") {
+          perfTogglePlay();
+        } else if (/^Digit[0-9]$/.test(code)) {
+          const d = int(code.slice(5));
+          perfFireScene(d === 0 ? 9 : d - 1);
+        } else if (PERF_PART_KEYS.includes(code)) {
+          const btn = document.querySelectorAll("#perfParts .perf-part")[PERF_PART_KEYS.indexOf(code)];
+          if (btn) perfToggleMute(int(btn.dataset.track));
+        } else if (PERF_VOX_KEYS.includes(code)) {
+          const btn = document.querySelector(`.vox-pad[data-pad="${PERF_VOX_KEYS.indexOf(code) + 1}"]`);
+          if (btn) { perfFlash(btn); btn.click(); }
+        } else if (code === "KeyB") {
+          const btn = document.getElementById("btnWashDrop");
+          if (btn && !btn.disabled) { perfFlash(btn); btn.click(); }
+        } else if (code === "KeyN" || code === "KeyV") {
+          const btn = document.getElementById(code === "KeyN" ? "btnBreakdown" : "btnDelayThrow");
+          if (btn) { perfFlash(btn); btn.click(); }
+        } else if (code === "BracketLeft") {
+          perfNudgeTempo(-1);
+        } else if (code === "BracketRight") {
+          perfNudgeTempo(1);
+        } else {
+          handled = false;
         }
+        if (handled) e.preventDefault();  // Space would otherwise scroll or re-press a focused button
       });
 
       // =============================================
@@ -5750,12 +6298,13 @@
         const EVENTS = [
           "bridge.status", "bridge.connected", "bridge.disconnected",
           "song.tempo", "song.is_playing", "song.tracks", "song.scenes", "song.key",
-          "track.name", "track.devices", "track.playing", "beat",
+          "track.name", "track.devices", "track.playing", "track.mute", "beat",
         ];
 
         const live = { serverUp: true, bridge: null, song: null, tracks: [], beat: null };
         let renderQueued = false;
         let snapshotTimer = null;
+        window.PulseLive = { state: live, refresh: () => refreshSnapshot() };
         let streamOpen = false;
 
         const $ = (id) => document.getElementById(id);
@@ -5817,15 +6366,17 @@
               if (!data.is_playing) live.beat = null;
               break;
             case "song.tracks": refreshSnapshotSoon(); break;  // indices may have shifted
-            case "song.scenes": if (s) s.num_scenes = data.num_scenes; break;
+            case "song.scenes": if (s) s.num_scenes = data.num_scenes; refreshSnapshotSoon(); break;  // for the new scene names
             case "song.key": if (s) Object.assign(s, data); break;
             case "track.name":
             case "track.devices":
+            case "track.mute":
             case "track.playing": {
               const t = live.tracks[data.track_index];
               if (!t) { refreshSnapshotSoon(); break; }
               if (name === "track.name") t.name = data.name;
               if (name === "track.devices") t.devices = data.devices || [];
+              if (name === "track.mute") t.mute = !!data.mute;
               if (name === "track.playing") {
                 t.playing_slot_index = data.playing_slot_index;
                 t.fired_slot_index = data.fired_slot_index;
@@ -5944,7 +6495,6 @@
           set("ovKey", keyLabel(s));
           set("ovTracks", s ? String(s.num_tracks) : "–");
           set("ovScenes", s ? String(s.num_scenes) : "–");
-          if (s && window.renderSceneButtons) window.renderSceneButtons(s.num_scenes);
 
           const rows = $("ovTrackRows");
           if (!rows) return;
@@ -6009,6 +6559,7 @@
           renderTransport();
           renderOverview();
           renderSystem();
+          if (window.renderPerform) window.renderPerform();
           syncMeterStream();  // opens/closes the meter stream as Live connects or drops
         }
 
@@ -6165,6 +6716,7 @@
         function drawViz(now) {
           viz.raf = 0;
           if (document.hidden) return;  // visibilitychange restarts the loop
+          if (window.renderPerformMeters) window.renderPerformMeters(viz.shown);
           const mini = $("vizMiniCanvas");
           const canvas = viz.active ? $("vizCanvas") : mini;
           const off = $("vizOffline");

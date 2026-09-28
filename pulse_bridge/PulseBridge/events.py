@@ -10,6 +10,7 @@ Events (name -> data):
   track.name        {"track_index", "name"}
   track.devices     {"track_index", "num_devices", "devices"}
   track.playing     {"track_index", "playing_slot_index", "fired_slot_index"}
+  track.mute        {"track_index", "mute"}
   beat              {"beat", "bar", "beat_in_bar", "song_time"}   (while playing)
   meters            {"master": [l, r], "tracks": [level, ...]}   (~10 Hz, only to
                     connections that sent set_meters; nothing while everything is silent)
@@ -86,6 +87,8 @@ class EventHub(object):
             "num_devices": len(track.devices),
             "devices": [d.name for d in track.devices],
         }))
+
+        self._listen(track, "mute", lambda: self._emit("track.mute", {"track_index": idx(), "mute": bool(track.mute)}))
 
         def on_playing():
             self._emit("track.playing", {

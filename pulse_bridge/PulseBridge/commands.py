@@ -15,7 +15,7 @@ try:
 except ImportError:  # unit tests
     Live = None
 
-BRIDGE_VERSION = "0.1.0"
+BRIDGE_VERSION = "0.2.0"
 PROTOCOL_VERSION = 1
 
 BROWSER_ROOTS = (
@@ -85,9 +85,13 @@ class Commands(object):
             "set_tempo": self.set_tempo,
             "play": self.play,
             "stop": self.stop,
+            "stop_all_clips": self.stop_all_clips,
             "set_song_key": self.set_song_key,
             "create_midi_track": self.create_midi_track,
             "create_audio_track": self.create_audio_track,
+            "create_return_track": self.create_return_track,
+            "get_return_tracks": self.get_return_tracks,
+            "set_send": self.set_send,
             "get_track": self.get_track,
             "set_track": self.set_track,
             "create_scene": self.create_scene,
@@ -131,6 +135,13 @@ class Commands(object):
         return self.host.application().browser
 
     def _track(self, params, key="track_index"):
+        """A regular track, or a return track when params has "return_index" instead."""
+        if params.get("return_index") is not None:
+            i = _int(params, "return_index")
+            tracks = self.song.return_tracks
+            if i < 0 or i >= len(tracks):
+                raise CommandError("return_index_out_of_range: %d (returns: %d)" % (i, len(tracks)))
+            return i, tracks[i]
         i = _int(params, key)
         tracks = self.song.tracks
         if i < 0 or i >= len(tracks):
@@ -278,6 +289,11 @@ class Commands(object):
         self.song.stop_playing()
         return {"is_playing": False}
 
+    def stop_all_clips(self, params):
+        """Stop every clip (quantized like Live's own Stop All Clips button); transport keeps running."""
+        self.song.stop_all_clips()
+        return {"stopped": True}
+
     def set_song_key(self, params):
         s = self.song
         if not hasattr(s, "root_note"):
@@ -301,6 +317,38 @@ class Commands(object):
         self.song.create_audio_track(index)
         n = len(self.song.tracks)
         return {"index": n - 1 if index < 0 else index, "num_tracks": n}
+
+    def create_return_track(self, params):
+        """Add a return track at the end. Every track gets a new send for it."""
+        s = self.song
+        before = len(s.return_tracks)
+        try:
+            s.create_return_track()
+        except Exception as e:
+            # Live refuses past the edition's return limit (Lite and Intro allow 2).
+            raise CommandError("return_track_limit: %s" % e)
+        if len(s.return_tracks) <= before:
+            raise CommandError("return_track_limit: Live didn't add a return track")
+        index = len(s.return_tracks) - 1
+        if params.get("name") is not None:
+            s.return_tracks[index].name = str(params["name"])
+        return {"return_index": index, "num_returns": len(s.return_tracks)}
+
+    def get_return_tracks(self, params):
+        return {"returns": [
+            {"return_index": i, "name": t.name, "devices": [self._device_info(j, d) for j, d in enumerate(t.devices)]}
+            for i, t in enumerate(self.song.return_tracks)
+        ]}
+
+    def set_send(self, params):
+        ti, t = self._track(params)
+        si = _int(params, "send_index")
+        sends = list(t.mixer_device.sends)
+        if si < 0 or si >= len(sends):
+            raise CommandError("send_index_out_of_range: %d (sends: %d)" % (si, len(sends)))
+        p = sends[si]
+        p.value = _clamp(_float(params, "value"), p.min, p.max)
+        return {"track_index": ti, "send_index": si, "value": p.value}
 
     # ------------------------------------------------------------------ tracks
 
@@ -328,9 +376,10 @@ class Commands(object):
             "devices": [self._device_info(i, d) for i, d in enumerate(t.devices)],
             "volume": t.mixer_device.volume.value,
             "panning": t.mixer_device.panning.value,
+            "sends": [p.value for p in getattr(t.mixer_device, "sends", ())],
             "mute": bool(t.mute),
             "solo": bool(t.solo),
-            "playing_slot_index": t.playing_slot_index,
+            "playing_slot_index": getattr(t, "playing_slot_index", -1),  # return tracks have no slots
         }
 
     def set_track(self, params):

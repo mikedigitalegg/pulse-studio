@@ -28,6 +28,7 @@ ROLE_POOLS: dict[str, dict] = {
     "stabs": {"paths": ["sounds/synth rhythmic", "sounds/synth keys", "sounds/piano & keys"], "label": "stabs / rhythmic chords"},
     "fx": {"paths": ["sounds/effects", "sounds/ambient & evolving"], "label": "FX, risers and textures"},
     "chords": {"paths": ["sounds/pad", "sounds/ambient & evolving", "sounds/synth keys"], "label": "pads / sustained chords"},
+    "pad": {"paths": ["sounds/pad", "sounds/ambient & evolving"], "label": "atmospheric pad held above the chords (differs from the chords sound)"},
 }
 
 # Words that suit (+) or clash with (-) a role regardless of style.
@@ -38,6 +39,7 @@ ROLE_WORDS: dict[str, tuple[list[str], list[str]]] = {
     "stabs": (["stab", "chord", "rhythm", "organ", "pluck", "keys"], ["lead", "arp", "solo"]),
     "fx": (["riser", "sweep", "noise", "impact", "swell", "whoosh", "texture", "atmos", "fx"], ["piano", "guitar"]),
     "chords": (["pad", "chord", "warm", "atmos", "strings"], ["lead", "bass", "pluck"]),
+    "pad": (["pad", "atmos", "air", "evolv", "swell", "drone", "wash", "strings"], ["lead", "bass", "pluck", "stab", "keys", "piano", "arp"]),
 }
 
 # Style timbre profiles: + words per role (or "*" for all roles), and words to avoid.
@@ -199,7 +201,8 @@ def _score(item: dict, role: str, profile: dict, prompt_words: list[str]) -> flo
     s = 0.0
     s += 3 * sum(1 for w in pos_role if w in text)
     s -= 6 * sum(1 for w in neg_role if w in text)
-    s += 8 * sum(1 for w in plus.get(role, []) if w in text)
+    # The pad shares the chords' style words unless a profile names pad words of its own.
+    s += 8 * sum(1 for w in plus.get(role, plus.get("chords", []) if role == "pad" else []) if w in text)
     s += 4 * sum(1 for w in plus.get("*", []) if w in text)
     s -= 10 * sum(1 for w in profile.get("-", []) if w in text)
     s += 12 * sum(1 for w in prompt_words if w in text)  # the producer's own words beat style defaults
@@ -233,7 +236,8 @@ def heuristic_palette(candidates: dict[str, list[dict]]) -> dict[str, dict]:
         if not cands:
             continue
         choice = cands[0]
-        if role == "perc" and "drums" in picks and choice.get("uri") == picks["drums"]["item"].get("uri") and len(cands) > 1:
+        other = {"perc": "drums", "pad": "chords"}.get(role)
+        if other in picks and choice.get("uri") == picks[other]["item"].get("uri") and len(cands) > 1:
             choice = cands[1]
         picks[role] = {"item": choice, "reason": "best match for the style profile", "source": "heuristic"}
     return picks
@@ -243,7 +247,7 @@ AI_SYSTEM = (
     "You are an expert electronic music producer choosing a coherent sound palette in Ableton Live. "
     "For each role pick EXACTLY ONE candidate id from that role's list. The sounds must work together "
     "as one track: complementary frequency ranges, one clear character, nothing that clashes with the style. "
-    "The perc kit must differ from the main drum kit. Return STRICT JSON only: "
+    "The perc kit must differ from the main drum kit, and the pad from the chords sound. Return STRICT JSON only: "
     '{"choices": {"<role>": {"id": <number>, "reason": "<one short sentence>"}}}'
 )
 

@@ -43,6 +43,8 @@ class FakeBridge:
         if cmd == "load_device":
             self.devices[ti] = params["device_name"]
             return {}
+        if cmd == "get_return_tracks":
+            raise srv.BridgeError("unknown_command: get_return_tracks")  # a PulseBridge before 0.2.0
         raise AssertionError(cmd)
 
 

@@ -15,7 +15,7 @@ has moved (OneDrive, external drive, macOS). Then, in Live:
 
 **Settings → Link, Tempo & MIDI → Control Surface → PulseBridge** (Input/Output: None)
 
-Live shows "PulseBridge 0.1.0 ready on port 9880" in the status bar. You can run
+Live shows "PulseBridge 0.2.0 ready on port 9880" in the status bar. You can run
 AbletonOSC alongside it in another slot; the Pulse Studio server uses PulseBridge when
 it is connected and falls back to OSC when it is not.
 
@@ -57,10 +57,13 @@ tick. So a burst of sends followed by a query sees every send applied.
 | `get_capabilities` | `refresh?` |
 | `get_song`, `get_snapshot` | |
 | `set_tempo` | `tempo` |
-| `play`, `stop` | |
+| `play`, `stop`, `stop_all_clips` | |
 | `set_song_key` (Live 12) | `root_note?` 0–11, `scale_name?`, `scale_mode?` |
 | `create_midi_track`, `create_audio_track`, `create_scene` | `index` (-1 = end) |
-| `get_track` | `track_index` |
+| `get_track` | `track_index` → also `sends` (one value per return) |
+| `create_return_track` | `name?` → `return_index` (fails with `return_track_limit` past the edition's limit) |
+| `get_return_tracks` | → `returns: [{return_index, name, devices}]` |
+| `set_send` | `track_index`, `send_index`, `value` (clamped to the send's range) |
 | `set_track` | `track_index`, `name?`, `volume?`, `panning?`, `mute?`, `solo?`, `arm?` |
 | `set_scene_name`, `fire_scene` | `scene_index`, `name` |
 | `has_clip`, `delete_clip`, `fire_clip`, `stop_clip` | `track_index`, `clip_slot_index` |
@@ -75,13 +78,14 @@ tick. So a burst of sends followed by a query sees every send applied.
 | `load_device` | `track_index`, `device_name` (a stock device such as "Drift" or "Drum Rack") |
 | `load_audio_clip` (Live 12.0.5+) | `track_index` (an audio track), `clip_slot_index`, `file_path` (absolute), `name?`, `warping?` / `looping?` (default off), `replace?` |
 | `get_track_meter` | `track_index` → `peak`, `master_peak`, `mute`, `volume`, `soloed_elsewhere`, `master_volume`, `is_playing` |
+| (return tracks) | `get_track`, `set_track`, `load_device`, `get_device_params`, `set_device_param` and `delete_device` take `return_index` in place of `track_index` |
 | `batch` | `commands: [{cmd, params}]`, `stop_on_error?` |
 | `get_session_info`, `get_browser_tree`, `get_browser_items_at_path`, `load_browser_item` | same as AbletonMCP |
 
 ### Events
 
 `song.tempo`, `song.is_playing`, `song.tracks`, `song.scenes`, `song.key`, `track.name`,
-`track.devices`, `track.playing` (playing/fired slot), `beat` (once per beat while playing).
+`track.devices`, `track.playing` (playing/fired slot), `track.mute`, `beat` (once per beat while playing).
 
 The Pulse Studio server re-publishes these as Server-Sent Events at `GET /live/events`.
 Related endpoints: `GET /bridge/status` and `GET /live/snapshot`.

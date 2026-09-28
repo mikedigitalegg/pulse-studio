@@ -120,8 +120,9 @@ class Slot:
 
 
 class Mixer:
-    def __init__(self):
+    def __init__(self, n_sends=0):
         self.volume, self.panning = Param("Volume", 0.85), Param("Pan", 0.0, -1.0, 1.0)
+        self.sends = [Param("Send", 0.0) for _ in range(n_sends)]
 
 
 class Track(Observable):
@@ -153,6 +154,7 @@ class Song(Observable):
         self.scenes = [Scene() for _ in range(2)]
         self.tracks = [Track("1-MIDI", 2), Track("2-MIDI", 2)]
         self.return_tracks, self.master_track = [], Track("Master", 0)
+        self.max_returns = 12
         self.view = types.SimpleNamespace(selected_track=None, selected_device=None)
         self.view.select_device = lambda d: setattr(self.view, "selected_device", d)
         self.root_note, self.scale_name = 0, "Major"
@@ -179,6 +181,18 @@ class Song(Observable):
         t = Track("Audio", len(self.scenes), audio=True)
         self.tracks.insert(len(self.tracks) if index < 0 else index, t)
         self.notify("tracks")
+
+    def stop_all_clips(self):
+        self.stopped_all = True
+
+    def create_return_track(self):
+        if len(self.return_tracks) >= self.max_returns:
+            raise RuntimeError("Maximum number of return tracks reached")
+        t = Track("Return", 0)
+        del t.playing_slot_index  # return tracks have no clip slots
+        self.return_tracks.append(t)
+        for tr in self.tracks + self.return_tracks:
+            tr.mixer_device.sends = tr.mixer_device.sends + [Param("Send", 0.0)]
 
     def create_scene(self, index):
         self.scenes.append(Scene())
@@ -592,3 +606,54 @@ def test_get_track_meter_reports_level_and_mixer_state(client, live):
     res = client.request("get_track_meter", {"track_index": 0})
     assert res["peak"] == pytest.approx(0.4)
     assert res["soloed_elsewhere"] is True and res["mute"] is False
+
+
+def test_return_tracks_devices_and_sends(client, live):
+    from pulse_bridge_client import BridgeError
+
+    song = live[1]
+    res = client.request("create_return_track", {"name": "PS-Reverb"})
+    assert res == {"return_index": 0, "num_returns": 1}
+    assert song.return_tracks[0].name == "PS-Reverb"
+
+    # Device commands address a return with return_index instead of track_index.
+    client.request("load_device", {"return_index": 0, "device_name": "Reverb"})
+    info = client.request("get_track", {"return_index": 0})
+    assert [d["name"] for d in info["devices"]] == ["Reverb"] and info["playing_slot_index"] == -1
+    assert client.request("get_return_tracks")["returns"][0]["devices"][0]["name"] == "Reverb"
+
+    res = client.request("set_send", {"track_index": 1, "send_index": 0, "value": 1.7})
+    assert res["value"] == 1.0  # clamped to the send's range
+    assert client.request("get_track", {"track_index": 1})["sends"] == [1.0]
+    assert client.request("get_track", {"track_index": 0})["sends"] == [0.0]
+
+    with pytest.raises(BridgeError, match="send_index_out_of_range"):
+        client.request("set_send", {"track_index": 0, "send_index": 3, "value": 0.5})
+    with pytest.raises(BridgeError, match="return_index_out_of_range"):
+        client.request("get_track", {"return_index": 4})
+
+
+def test_return_track_limit_is_reported(client, live):
+    from pulse_bridge_client import BridgeError
+
+    live[1].max_returns = 0
+    with pytest.raises(BridgeError, match="return_track_limit"):
+        client.request("create_return_track")
+
+
+def test_stop_all_clips(client, live):
+    client.request("stop_all_clips")
+    assert live[1].stopped_all is True
+
+
+def test_mute_changes_are_pushed(client, live):
+    song = live[1]
+    got = []
+    client.on_event(lambda name, data: got.append((name, data)) if name == "track.mute" else None)
+    client.request("subscribe")
+    client.request("set_track", {"track_index": 1, "mute": True})
+    song.tracks[1].notify("mute")  # Live fires the listener after the change
+    deadline = time.time() + 2
+    while not got and time.time() < deadline:
+        time.sleep(0.01)
+    assert got and got[-1][1] == {"track_index": 1, "mute": True}
