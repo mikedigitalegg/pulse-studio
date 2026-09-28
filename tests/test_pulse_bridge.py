@@ -61,6 +61,7 @@ class Device:
         self.drum_pads = [Pad(n, "", False) for n in range(128)]
         for note, pad_name in (pads or {}).items():
             self.drum_pads[note] = Pad(note, pad_name)
+        self.view = types.SimpleNamespace(selected_drum_pad=None)
 
 
 class Clip:
@@ -152,7 +153,8 @@ class Song(Observable):
         self.scenes = [Scene() for _ in range(2)]
         self.tracks = [Track("1-MIDI", 2), Track("2-MIDI", 2)]
         self.return_tracks, self.master_track = [], Track("Master", 0)
-        self.view = types.SimpleNamespace(selected_track=None)
+        self.view = types.SimpleNamespace(selected_track=None, selected_device=None)
+        self.view.select_device = lambda d: setattr(self.view, "selected_device", d)
         self.root_note, self.scale_name = 0, "Major"
         self.undo_depth = 0
 
@@ -197,13 +199,24 @@ class Browser:
         self.audio_effects = Item("Audio Effects", [Item("Reverb", device=True)], False)
         self.midi_effects = Item("MIDI Effects", [Item("Arpeggiator", device=True)], False)
         self.sounds = Item("Sounds", [], False)
+        self.samples = Item("Samples", [Item("Kick Deep.wav"), Item("Clap Wide.wav")], False)
         self.loaded = []
         self._song = None
 
     def load_item(self, item):
         self.loaded.append(item.name)
+        track = self._song.view.selected_track
+        if item.name.endswith(".wav"):
+            # A sample goes onto the selected pad of a selected Drum Rack, else into a new Simpler.
+            rack = self._song.view.selected_device
+            pad = rack.view.selected_drum_pad if rack is not None and rack in track.devices else None
+            if pad is not None:
+                pad.chains, pad.name = [object()], item.name[:-4]
+            else:
+                track.devices.append(Device("Simpler"))
+            return
         pads = {36: "Kick 909", 38: "Snare 909", 42: "Hihat Closed 909"} if item.name.endswith(".adg") else None
-        self._song.view.selected_track.devices.append(Device(item.name.replace(".adg", ""), pads))
+        track.devices.append(Device(item.name.replace(".adg", ""), pads))
 
 
 class App:
@@ -426,6 +439,23 @@ def test_load_by_path_track_device_types_and_drum_pads(client, live):
     with pytest.raises(Exception, match="path_not_found"):
         client.request("load_item_at_path", {"track_index": 0, "path": "sounds/Nope", "name": "x"})
     assert client.request("get_drum_pads", {"track_index": 1}) == {"track_index": 1, "rack": None, "pads": []}
+
+
+def test_load_sample_onto_drum_pad(client, live):
+    song = live[1]
+    song.tracks[0].devices.append(Device("Drum Rack", pads={36: "Kick 909"}))
+    res = client.request("load_item_to_drum_pad", {"track_index": 0, "pad_note": 38, "path": "samples", "name": "Clap Wide.wav"})
+    assert res["pad_filled"] and res["rack_intact"] and res["pad_name"] == "Clap Wide"
+    pads = client.request("get_drum_pads", {"track_index": 0})
+    assert {p["note"]: p["name"] for p in pads["pads"]} == {36: "Kick 909", 38: "Clap Wide"}
+    assert len(song.tracks[0].devices) == 1
+
+    with pytest.raises(Exception, match="no_drum_rack"):
+        client.request("load_item_to_drum_pad", {"track_index": 1, "path": "samples", "name": "Kick Deep.wav"})
+    with pytest.raises(Exception, match="pad_out_of_range"):
+        client.request("load_item_to_drum_pad", {"track_index": 0, "pad_note": 200, "path": "samples", "name": "Kick Deep.wav"})
+    with pytest.raises(Exception, match="item_not_found"):
+        client.request("load_item_to_drum_pad", {"track_index": 0, "path": "samples", "name": "Nope.wav"})
 
 
 def test_find_free_slot(client, live):

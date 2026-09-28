@@ -238,3 +238,72 @@ def test_full_track_swing_applies_to_every_layer(fake_ai):
         track = {srv.GEN_CACHE.get_drums: 0, srv.GEN_CACHE.get_perc: 2, srv.GEN_CACHE.get_stabs: 3}[getter]
         assert getter(track, slot)["swing"] == pytest.approx(0.18)
     assert srv.GEN_CACHE.get_bass(1, slot)["swing"] == pytest.approx(0.18)
+
+
+# ---------------------------------------------------------------- resilience
+
+class _FakeResp:
+    def __init__(self, content):
+        self._content = content
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"choices": [{"message": {"content": self._content}}]}
+
+
+def _fake_openai(monkeypatch, contents, sent):
+    class Client:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        async def post(self, url, json=None, headers=None):
+            sent.append(json)
+            return _FakeResp(contents.pop(0))
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setattr(srv.httpx, "AsyncClient", Client)
+
+
+def test_split_json_objects_are_merged(monkeypatch):
+    # The shape gpt-4o-mini returned for a tekno Climax scene.
+    broken = '{"style":"tekno","drums":{"bars":1,"lanes":{"kick":[127,0,0,0]}}},{"bass":{"bars":1,"steps":[0,43]}},{"applied":{"summary":"x"}}'
+    sent = []
+    _fake_openai(monkeypatch, [broken], sent)
+    obj, meta = asyncio.run(srv._call_openai_async("sys JSON", "user", 0.7))
+    assert meta["ok"], meta
+    assert set(obj) == {"style", "drums", "bass", "applied"}
+    assert sent[0]["response_format"] == {"type": "json_object"}
+
+
+def test_unrecoverable_json_still_reports_bad_response(monkeypatch):
+    sent = []
+    _fake_openai(monkeypatch, ['{"a": 1,, }', '{"a": 1,, }'], sent)
+    obj, meta = asyncio.run(srv._call_openai_async("sys JSON", "user", 0.7))
+    assert obj is None and meta["error"] == "openai_bad_response"
+    assert len(sent) == 2  # retried once
+
+
+def test_failed_variation_falls_back_to_core(fake_ai, monkeypatch):
+    real_pair = fake_ai.pair
+
+    async def flaky_pair(style, bars, drum_lanes, root, prompt, temperature):
+        if fake_ai.pair_count >= 1:  # core succeeds, the Climax variation fails
+            fake_ai.pair_count += 1
+            return None, {"ok": False, "error": "openai_bad_response"}
+        return await real_pair(style, bars, drum_lanes, root, prompt, temperature)
+
+    monkeypatch.setattr(srv, "_openai_generate_pair", flaky_pair)
+    res = _run_full("techno")
+    assert res["ok"], res
+    climax = next(s for s in res["scenes"] if s["name"] == "Climax")
+    assert climax["mode"] == "derive_fallback"
+    assert any("Climax" in w for w in res["warnings"])
+    assert srv.GEN_CACHE.get_drums(0, climax["slot"])["lanes"]["kick"] == srv.GEN_CACHE.get_drums(0, 3)["lanes"]["kick"]

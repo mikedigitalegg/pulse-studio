@@ -1129,6 +1129,43 @@ async def _verify_voice_plays(track_index: int, clip_slot_index: int, duration_s
     return {"playing": False, "peak": round(best, 3), "waited_s": round(time.time() - t0, 2), "reasons": reasons}
 
 
+def _copy_to_user_library(user_library: str, path: str, subdir: tuple[str, ...]) -> tuple[str, str]:
+    """Copy a file into the User Library so Live's browser can load it; returns (dest, browser folder path)."""
+    dest_dir = os.path.join(user_library, *subdir)
+    os.makedirs(dest_dir, exist_ok=True)
+    dest = os.path.join(dest_dir, os.path.basename(path))
+    if not os.path.isfile(dest):
+        shutil.copyfile(path, dest)
+    return dest, "user_library/" + "/".join(subdir)
+
+
+async def _bridge_load_with_retry(cmd: str, params: dict, tries: int = 10) -> str | None:
+    """Run a browser-load command, retrying while Live indexes new User Library files. Returns the last error, or None."""
+    last_err = None
+    for _ in range(max(1, tries)):
+        try:
+            await _bridge_call(cmd, params, 5.0)
+            return None
+        except Exception as e:
+            last_err = str(e)
+            # Only a missing item is worth waiting for; anything else won't fix itself.
+            if "not_found" not in last_err:
+                return last_err
+            await asyncio.sleep(0.5)
+    return last_err
+
+
+async def _make_track_audible(track_index: int, what: str, warnings: list[str]) -> None:
+    """Unmute the track and raise a low fader, so a freshly sent clip can actually be heard."""
+    state = await _bridge_call("get_track_meter", {"track_index": track_index}) or {}
+    if state.get("mute"):
+        await _bridge_call("set_track", {"track_index": track_index, "mute": False})
+        warnings.append(f"Unmuted the {what} track.")
+    if float(state.get("volume") or 0.0) < 0.5:
+        await _bridge_call("set_track", {"track_index": track_index, "volume": 0.85})
+        warnings.append(f"{what.capitalize()} track fader was low; set it to 0 dB.")
+
+
 async def _send_voice_as_simpler(path: str, duration_s: float, label: str, req: "VoiceSendRequest") -> dict:
     """Fallback for Live before 12.0.5: Simpler on its own MIDI track, triggered by one note."""
     ul = _user_library_dir()
@@ -1138,25 +1175,12 @@ async def _send_voice_as_simpler(path: str, duration_s: float, label: str, req: 
             "error": "no_user_library",
             "hint": "Live before 12.0.5 can't create audio clips from a script. Set PULSE_USER_LIBRARY to your Ableton User Library folder, or drag the file in by hand.",
         }
-    dest_dir = os.path.join(ul, *VOICE_USER_LIBRARY_SUBDIR)
-    os.makedirs(dest_dir, exist_ok=True)
-    dest = os.path.join(dest_dir, os.path.basename(path))
-    shutil.copyfile(path, dest)
+    dest, browser_path = _copy_to_user_library(ul, path, VOICE_USER_LIBRARY_SUBDIR)
 
     track_name = f"{VOICE_SIMPLER_TRACK_PREFIX} {label or os.path.splitext(os.path.basename(path))[0]}"[:40]
     ti, _ = await _voice_track_index(audio=False, name=track_name)
 
-    # Live indexes new User Library files in the background; retry briefly.
-    browser_path = "user_library/" + "/".join(VOICE_USER_LIBRARY_SUBDIR)
-    last_err = None
-    for _ in range(10):
-        try:
-            await _bridge_call("load_item_at_path", {"track_index": ti, "path": browser_path, "name": os.path.basename(dest)}, 5.0)
-            last_err = None
-            break
-        except Exception as e:
-            last_err = str(e)
-            await asyncio.sleep(0.5)
+    last_err = await _bridge_load_with_retry("load_item_at_path", {"track_index": ti, "path": browser_path, "name": os.path.basename(dest)})
     if last_err:
         return {"ok": False, "error": "sample_not_in_browser", "detail": last_err, "file_path": dest, "track_index": ti}
 
@@ -1252,19 +1276,319 @@ async def send_voice_to_live(req: VoiceSendRequest):
         ti, slot = int(result["track_index"]), int(result["clip_slot_index"])
 
         # Make sure nothing on the track itself stops it being heard.
-        state = await _bridge_call("get_track_meter", {"track_index": ti}) or {}
-        if state.get("mute"):
-            await _bridge_call("set_track", {"track_index": ti, "mute": False})
-            warnings.append("Unmuted the voice track.")
-        if float(state.get("volume") or 0.0) < 0.5:
-            await _bridge_call("set_track", {"track_index": ti, "volume": 0.85})
-            warnings.append("Voice track fader was low; set it to 0 dB.")
+        await _make_track_audible(ti, "voice", warnings)
 
         result["verified"] = await _verify_voice_plays(ti, slot, duration_s, req.verify_timeout_s) if req.fire else None
     except Exception as e:
         return {"ok": False, "error": "bridge_error", "detail": str(e), "file_path": path}
 
     result.update({"live_version": live_version, "duration_s": round(duration_s, 3), "warnings": warnings})
+    return result
+
+
+# ---------------------------------------------------------------- samples -> Live
+#
+# Imported samples live in samples/ as 16-bit WAV (the page decodes MP3/AIFF/mic recordings
+# and re-encodes them before upload, so the server never needs ffmpeg). Live's own library
+# samples come from the browser index and are loaded by browser path instead of by file.
+
+SAMPLES_DIR = os.path.join(APP_DIR, "samples")
+os.makedirs(SAMPLES_DIR, exist_ok=True)
+app.mount("/sample_files", StaticFiles(directory=SAMPLES_DIR), name="sample_files")
+
+SAMPLE_TRACK_NAME = "PS-SMP"
+SAMPLE_USER_LIBRARY_SUBDIR = ("Samples", "Pulse Samples")
+SAMPLE_MAX_BYTES = 100 * 1024 * 1024
+SAMPLE_TARGETS = ("audio_clip", "simpler", "drum_pad")
+SAMPLE_LIBRARY_EXTS = (".wav", ".aif", ".aiff", ".flac", ".mp3", ".ogg")
+_SAMPLE_FILE_RE = re.compile(r"^smp_[a-z0-9_]*[0-9a-f]{12}\.wav$")
+
+
+def _sample_slug(name: str) -> str:
+    stem = os.path.splitext(os.path.basename(name or ""))[0].lower()
+    return re.sub(r"[^a-z0-9]+", "_", stem).strip("_")[:40]
+
+
+def _sample_label(filename: str) -> str:
+    """smp_deep_kick_3a748ffc975b.wav -> "deep kick"."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    stem = re.sub(r"^smp_", "", stem)
+    stem = re.sub(r"_?[0-9a-f]{12}$", "", stem)
+    return stem.replace("_", " ").strip() or "sample"
+
+
+def _sample_path(filename: str | None) -> str | None:
+    """Local path of an imported sample by filename (no directory escapes)."""
+    name = os.path.basename((filename or "").strip().split("?")[0])
+    if not _SAMPLE_FILE_RE.match(name):
+        return None
+    path = os.path.join(SAMPLES_DIR, name)
+    return path if os.path.isfile(path) else None
+
+
+def _sample_info(path: str) -> dict:
+    name = os.path.basename(path)
+    with wave.open(path, "rb") as wf:
+        frames, sr, ch = wf.getnframes(), wf.getframerate(), wf.getnchannels()
+    return {
+        "filename": name,
+        "name": _sample_label(name),
+        "url": f"/sample_files/{name}",
+        "duration_s": round(frames / float(sr or 1), 3),
+        "sample_rate": sr,
+        "channels": ch,
+        "bytes": os.path.getsize(path),
+        "modified": os.path.getmtime(path),
+    }
+
+
+@app.post("/samples/import")
+async def import_sample(file: UploadFile = File(...), name: str = Form(""), trim: bool = Form(False)):
+    """Save an uploaded 16-bit WAV as an imported sample. trim: cut silence and normalize (good for mic takes)."""
+    data = await file.read(SAMPLE_MAX_BYTES + 1)
+    if len(data) > SAMPLE_MAX_BYTES:
+        return {"ok": False, "error": "file_too_large", "hint": f"Max sample size is {SAMPLE_MAX_BYTES // (1024 * 1024)} MB."}
+    if data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return {"ok": False, "error": "invalid_wav", "hint": "Send a WAV file; the page converts other formats before uploading."}
+    try:
+        samples, sr, ch = _wav_read_pcm(data)
+    except ValueError as e:
+        return {"ok": False, "error": "unsupported_wav", "detail": str(e), "hint": "Only 16-bit PCM WAV is accepted; the page converts other formats before uploading."}
+    if not samples:
+        return {"ok": False, "error": "empty_audio"}
+    if trim:
+        samples = _prepare_voice_pcm(samples, ch, sr)
+        data = _wav_from_pcm(samples, sample_rate=sr, channels=ch)
+
+    slug = _sample_slug(name or file.filename or "sample")
+    digest = hashlib.sha1(data).hexdigest()[:12]
+    out_name = f"smp_{slug}_{digest}.wav" if slug else f"smp_{digest}.wav"
+    out_path = os.path.join(SAMPLES_DIR, out_name)
+    existed = os.path.isfile(out_path)
+    if not existed:
+        with open(out_path, "wb") as f:
+            f.write(data)
+    return {"ok": True, "duplicate": existed, "file_path": out_path, **_sample_info(out_path)}
+
+
+@app.get("/samples/list")
+def list_samples():
+    items = []
+    for name in os.listdir(SAMPLES_DIR):
+        if not _SAMPLE_FILE_RE.match(name):
+            continue
+        try:
+            items.append(_sample_info(os.path.join(SAMPLES_DIR, name)))
+        except (wave.Error, EOFError, OSError):
+            continue
+    items.sort(key=lambda x: x["modified"], reverse=True)
+    return {"ok": True, "samples": items}
+
+
+class SampleDeleteRequest(BaseModel):
+    filename: str
+
+
+@app.post("/samples/delete")
+def delete_sample(req: SampleDeleteRequest):
+    """Remove an imported sample from Pulse. Copies already in the User Library stay, since Live sets may use them."""
+    path = _sample_path(req.filename)
+    if not path:
+        return {"ok": False, "error": "sample_not_found"}
+    os.remove(path)
+    return {"ok": True, "filename": os.path.basename(path)}
+
+
+@app.get("/samples/library")
+def search_sample_library(q: str = Query(""), limit: int = Query(60, ge=1, le=500)):
+    """Search the samples in Live's browser index (Core Library and User Library)."""
+    terms = [t for t in (q or "").lower().split() if t]
+    items = _browser_index_items()
+    out = []
+    seen: set[tuple[str, str]] = set()
+    for it in items:
+        path = str(it.get("path") or "")
+        name = str(it.get("name") or "")
+        root = path.split("/", 1)[0]
+        if root not in ("samples", "user_library") or not name.lower().endswith(SAMPLE_LIBRARY_EXTS):
+            continue
+        hay = f"{name} {path}".lower()
+        if any(t not in hay for t in terms):
+            continue
+        key = (path, name)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"name": name, "path": path, "uri": it.get("uri")})
+        if len(out) >= limit:
+            break
+    return {"ok": True, "items": out, "indexed": bool(items)}
+
+
+class SampleSendRequest(BaseModel):
+    filename: str | None = None        # an imported sample (see /samples/list)
+    library_path: str | None = None    # or a Live library sample: its browser folder path...
+    library_name: str | None = None    # ...and item name (from /samples/library)
+    library_uri: str | None = None
+    target: str = "audio_clip"         # audio_clip | simpler | drum_pad
+    track_index: int | None = None     # audio_clip/simpler: default a PS-SMP track; drum_pad: required
+    clip_slot_index: int | None = None # default: first free slot
+    pad_note: int | None = None        # drum_pad: default the first empty pad from C1 (36)
+    loop: bool = False                 # audio_clip: warp to tempo and loop, instead of a one-shot
+    name: str | None = None
+    fire: bool = True                  # launch the clip and confirm it's audible (not for drum pads)
+    verify_timeout_s: float = 8.0
+
+
+def _sample_browser_source(req: SampleSendRequest, path: str | None) -> tuple[dict | None, dict | None]:
+    """(browser path/name to load the sample through Live's browser, error result)."""
+    if path is None:
+        return {"path": req.library_path, "name": req.library_name, "uri": req.library_uri}, None
+    ul = _user_library_dir()
+    if not ul:
+        return None, {
+            "ok": False,
+            "error": "no_user_library",
+            "hint": "Simpler and Drum Rack pads load samples through Live's browser. Set PULSE_USER_LIBRARY to your Ableton User Library folder.",
+            "file_path": path,
+        }
+    dest, browser_path = _copy_to_user_library(ul, path, SAMPLE_USER_LIBRARY_SUBDIR)
+    return {"path": browser_path, "name": os.path.basename(dest)}, None
+
+
+async def _sample_slot(req: SampleSendRequest, track_index: int) -> int:
+    if req.clip_slot_index is not None:
+        return int(req.clip_slot_index)
+    free = await _bridge_call("find_free_slot", {"track_index": track_index})
+    return int((free or {}).get("slot", 0))
+
+
+async def _sample_to_drum_pad(req: SampleSendRequest, source: dict, label: str, warnings: list[str]) -> dict:
+    if req.track_index is None:
+        return {"ok": False, "error": "missing_track", "hint": "Pick the track with the Drum Rack to load the sample onto."}
+    ti = int(req.track_index)
+    pads = await _bridge_call("get_drum_pads", {"track_index": ti}) or {}
+    if not pads.get("rack"):
+        track = await _bridge_call("get_track", {"track_index": ti}) or {}
+        if track.get("devices"):
+            return {"ok": False, "error": "no_drum_rack", "hint": "That track has an instrument but no Drum Rack. Pick a drum track, or an empty MIDI track."}
+        await _bridge_call("load_device", {"track_index": ti, "device_name": "Drum Rack"}, 10.0)
+        warnings.append("Added an empty Drum Rack to the track.")
+        pads = {"pads": []}
+    filled = {int(p["note"]) for p in (pads.get("pads") or []) if p.get("note") is not None}
+    if req.pad_note is not None:
+        note = int(req.pad_note)
+        if note in filled:
+            warnings.append("Replaced the sample already on that pad.")
+    else:
+        note = next((n for n in range(36, 52) if n not in filled), 36)
+        if note in filled:
+            warnings.append("The 16 main pads are full; replaced the sample on C1.")
+
+    params = {"track_index": ti, "pad_note": note, **{k: v for k, v in source.items() if v}}
+    err = await _bridge_load_with_retry("load_item_to_drum_pad", params)
+    if err:
+        code = "sample_not_in_browser" if "not_found" in err else "drum_pad_load_failed"
+        hint = "Reinstall PulseBridge (python pulse_bridge/install.py) and restart Live." if "unknown_command" in err else None
+        return {"ok": False, "error": code, "detail": err, "hint": hint, "track_index": ti, "pad_note": note}
+    after = await _bridge_call("get_drum_pads", {"track_index": ti}) or {}
+    pad = next((p for p in (after.get("pads") or []) if int(p.get("note", -1)) == note), None)
+    if pad is None:
+        warnings.append("Live didn't report the pad as filled; check the Drum Rack.")
+    return {"ok": True, "method": "drum_pad", "track_index": ti, "pad_note": note, "pad_name": (pad or {}).get("name") or label}
+
+
+@app.post("/samples/send_to_live")
+async def send_sample_to_live(req: SampleSendRequest):
+    target = (req.target or "audio_clip").strip().lower()
+    if target not in SAMPLE_TARGETS:
+        return {"ok": False, "error": "bad_target", "hint": f"target is one of: {', '.join(SAMPLE_TARGETS)}"}
+
+    path = None
+    duration_s = None
+    if req.filename:
+        path = _sample_path(req.filename)
+        if not path:
+            return {"ok": False, "error": "sample_not_found", "hint": "Pass the filename of an imported sample (see /samples/list)."}
+        path = os.path.abspath(path)
+        duration_s = _wav_duration_s(path)
+        label = (req.name or "").strip() or _sample_label(path)
+    elif req.library_path and req.library_name:
+        if target == "audio_clip":
+            return {"ok": False, "error": "library_not_audio_clip", "hint": "Live's library samples load through the browser; send them to a Simpler or a Drum Rack pad."}
+        label = (req.name or "").strip() or os.path.splitext(req.library_name)[0]
+    else:
+        return {"ok": False, "error": "missing_sample", "hint": "Pass filename (imported) or library_path + library_name (Live library)."}
+
+    if not BRIDGE.connected:
+        return {
+            "ok": False,
+            "error": "bridge_not_connected",
+            "hint": "Enable the PulseBridge control surface in Live to send samples automatically, or drag the file in by hand.",
+            "file_path": path,
+        }
+
+    warnings: list[str] = []
+    try:
+        hello = await _bridge_call("hello", {})
+        live_version = str((hello or {}).get("live_version") or "")
+
+        if target == "audio_clip":
+            if _live_version_tuple(live_version) < (12, 0, 5):
+                return {"ok": False, "error": "unsupported", "hint": "Live before 12.0.5 can't create audio clips from a script; send to a Simpler instead.", "live_version": live_version, "file_path": path}
+            if req.track_index is not None:
+                ti = int(req.track_index)
+            else:
+                ti, created = await _voice_track_index(audio=True, name=SAMPLE_TRACK_NAME)
+                if created:
+                    warnings.append(f"Created audio track '{SAMPLE_TRACK_NAME}' for samples.")
+            slot = await _sample_slot(req, ti)
+            clip = await _bridge_call("load_audio_clip", {
+                "track_index": ti,
+                "clip_slot_index": slot,
+                "file_path": path,
+                "name": label,
+                "warping": bool(req.loop),
+                "looping": bool(req.loop),
+            })
+            result = {"ok": True, "method": "audio_clip", "track_index": ti, "clip_slot_index": slot, "clip": clip}
+        else:
+            source, err = _sample_browser_source(req, path)
+            if err:
+                return err
+            if target == "drum_pad":
+                result = await _sample_to_drum_pad(req, source, label, warnings)
+                result.update({"live_version": live_version, "warnings": warnings, "file_path": path, "verified": None})
+                return result
+
+            # Simpler: loading a sample onto an empty MIDI track makes one; a single note plays it.
+            if req.track_index is not None:
+                ti = int(req.track_index)
+            else:
+                ti, _ = await _voice_track_index(audio=False, name=f"{SAMPLE_TRACK_NAME} {label}"[:40])
+            err = await _bridge_load_with_retry("load_item_at_path", {"track_index": ti, **{k: v for k, v in source.items() if v}})
+            if err:
+                code = "sample_not_in_browser" if "not_found" in err else "simpler_load_failed"
+                return {"ok": False, "error": code, "detail": err, "track_index": ti, "file_path": path}
+            song = await _bridge_call("get_song", {})
+            tempo = float((song or {}).get("tempo") or 120.0)
+            beats = max(0.25, duration_s * tempo / 60.0) if duration_s else 1.0
+            slot = await _sample_slot(req, ti)
+            await _bridge_call("write_clip", {
+                "track_index": ti,
+                "clip_slot_index": slot,
+                "length": float(max(4, int(-(-beats // 4)) * 4)),
+                "name": label,
+                "notes": [{"pitch": 60, "start_time": 0.0, "duration": beats, "velocity": 110}],
+            })
+            result = {"ok": True, "method": "simpler", "track_index": ti, "clip_slot_index": slot}
+
+        await _make_track_audible(result["track_index"], "sample", warnings)
+        result["verified"] = await _verify_voice_plays(result["track_index"], result["clip_slot_index"], duration_s or 1.0, req.verify_timeout_s) if req.fire else None
+    except Exception as e:
+        return {"ok": False, "error": "bridge_error", "detail": str(e), "file_path": path}
+
+    result.update({"live_version": live_version, "duration_s": round(duration_s, 3) if duration_s else None, "warnings": warnings, "file_path": path})
     return result
 
 
@@ -4533,15 +4857,20 @@ async def generate_full_track(req: GenerateFullTrackRequest):
     ])
     vary_by_idx = dict(zip(vary_idx, vary_results))
 
+    warnings: list[str] = []
     out_scenes = []
     for i, sc in enumerate(scenes):
         recipe = recipes[i]
         if i == core_idx:
             parts = core
-        elif i in vary_by_idx:
+        elif i in vary_by_idx and vary_by_idx[i].get("ok"):
             parts = vary_by_idx[i]
-            if not parts.get("ok"):
-                return {"ok": False, "error": "scene_generation_failed", "scene": sc, "detail": parts}
+        elif i in vary_by_idx:
+            # A failed variation shouldn't sink the whole track: build this scene from the core groove.
+            detail = vary_by_idx[i]
+            warnings.append(f"{sc.get('name')}: AI variation failed ({detail.get('error')}); built from the core groove instead.")
+            recipe = {**recipe, "mode": "derive_fallback"}
+            parts = _derive_scene_parts(core, recipe, clip_bars)
         else:
             parts = _derive_scene_parts(core, recipe, clip_bars)
 
@@ -4623,6 +4952,7 @@ async def generate_full_track(req: GenerateFullTrackRequest):
             "hints": _instrument_index_hints_from_applied(instrument_applied) if bool(req.apply_instruments) else [],
         },
         "chords": {"track_index": CHORDS_TRACK_INDEX, "root_midi": chord_root, "progression": chord_prog},
+        "warnings": warnings,
         "scene_count": len(out_scenes),
         "scenes": out_scenes,
         "suggested_arrangement": arrangement,
@@ -6405,7 +6735,21 @@ async def _call_openai_async(system: str, user: str, temperature: float):
         candidate = _extract_json_text(content)
         if not candidate:
             raise ValueError("empty_content")
-        return json.loads(candidate), candidate
+        try:
+            return json.loads(candidate), candidate
+        except json.JSONDecodeError:
+            # Models sometimes split one object into several: {"drums":...},{"bass":...}.
+            # Parse them as a list and merge back into one object.
+            try:
+                parts = json.loads("[" + candidate + "]")
+            except json.JSONDecodeError:
+                raise
+            if not parts or not all(isinstance(x, dict) for x in parts):
+                raise
+            merged: dict = {}
+            for x in parts:
+                merged.update(x)
+            return merged, candidate
 
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -6435,6 +6779,8 @@ async def _call_openai_async(system: str, user: str, temperature: float):
                 {"role": "user", "content": user},
             ],
             "temperature": float(temp),
+            # JSON mode: the API guarantees one syntactically valid JSON object.
+            "response_format": {"type": "json_object"},
         }
 
         try:

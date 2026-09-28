@@ -7,3 +7,4 @@ ableton-mcp/
 .venv/
 .env
 .pulse_palette.json
+samples/

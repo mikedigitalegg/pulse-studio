@@ -536,6 +536,27 @@
       .viz-track-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .viz-bar { height: 8px; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border); overflow: hidden; }
       .viz-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--success), var(--accent)); border-radius: 4px; }
+
+      /* Samples */
+      .smp-drop {
+        border: 2px dashed var(--border);
+        border-radius: 12px;
+        padding: 28px 16px;
+        text-align: center;
+        color: var(--text-muted);
+        cursor: pointer;
+        transition: border-color 0.2s, background 0.2s;
+      }
+      .smp-drop:hover, .smp-drop.over { border-color: var(--accent); background: rgba(99,102,241,0.08); }
+      .smp-list { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; max-height: 420px; overflow-y: auto; }
+      .smp-row {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px;
+      }
+      .smp-row .smp-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .smp-row .kb-meta { white-space: nowrap; }
+      .smp-row button { padding: 6px 10px; font-size: 13px; }
+      @media (max-width: 700px) { .smp-row { flex-wrap: wrap; } }
     </style>
   </head>
   <body>
@@ -554,6 +575,9 @@
         </div>
         <div class="nav-item" data-view="knowledge" onclick="switchView('knowledge')">
           <span>Styles</span>
+        </div>
+        <div class="nav-item" data-view="samples" onclick="switchView('samples')">
+          <span>Samples</span>
         </div>
         <div class="nav-item" data-view="performance" onclick="switchView('performance')">
           <span>Perform</span>
@@ -1110,6 +1134,64 @@
         </div>
       </div>
 
+      <!-- SAMPLES VIEW -->
+      <div id="view-samples" class="view-section">
+        <h2>Samples</h2>
+
+        <div class="card">
+          <h4>Send To</h4>
+          <p class="control-label">Where a sample goes when you press Send. Audio clips go on the PS-SMP audio track (Live 12.0.5+). Simpler puts the sample on its own MIDI track with a clip that plays it. Drum Rack pad loads it onto a pad of the track you pick.</p>
+          <div class="row" style="margin-top: 12px;">
+            <select id="smpTarget" style="width: auto; min-width: 200px;">
+              <option value="audio_clip">Audio clip</option>
+              <option value="simpler">Simpler (new track)</option>
+              <option value="drum_pad">Drum Rack pad</option>
+            </select>
+            <span id="smpDrumFields" class="row" style="display: none;">
+              <label class="control-label" style="margin: 0;" for="smpTrack">Drum track</label>
+              <select id="smpTrack" style="display: none; width: auto; min-width: 220px;"></select>
+              <input id="smpTrackIndex" type="number" min="1" placeholder="Track number" style="width: 140px;" />
+              <label class="control-label" style="margin: 0;" for="smpPadNote">Pad note</label>
+              <input id="smpPadNote" type="number" min="0" max="127" placeholder="next empty" style="width: 120px;" />
+            </span>
+            <label class="control-label" style="margin: 0;" id="smpLoopLabel"><input id="smpLoop" type="checkbox" /> Loop (warp to tempo)</label>
+            <label class="control-label" style="margin: 0;" id="smpFireLabel"><input id="smpFire" type="checkbox" checked /> Play it</label>
+          </div>
+          <div id="smpTrackHint" class="kb-meta" style="margin-top: 6px;"></div>
+          <div id="smpSendStatus" style="margin-top: 8px; font-size: 12px; color: var(--text-muted);"></div>
+        </div>
+
+        <div class="card">
+          <h4>Import</h4>
+          <p class="control-label">Drop audio files here or record from your microphone. WAV, MP3, FLAC, OGG and M4A work; the page converts them to WAV before saving.</p>
+          <div id="smpDrop" class="smp-drop" role="button" tabindex="0" style="margin-top: 12px;">
+            Drop samples here, or click to choose files
+            <input id="smpFile" type="file" multiple accept="audio/*,.wav,.mp3,.flac,.ogg,.m4a,.aif,.aiff" style="display: none;" />
+          </div>
+          <div class="row" style="margin-top: 12px;">
+            <input id="smpRecName" type="text" placeholder="recording name (optional)" style="flex: 1; min-width: 200px;" />
+            <label class="control-label" style="margin: 0;"><input id="smpRecTrim" type="checkbox" checked /> Trim silence</label>
+            <button id="smpRecBtn" class="primary">Record</button>
+          </div>
+          <div id="smpImportStatus" style="margin-top: 8px; font-size: 12px; color: var(--text-muted);"></div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; align-items: center; justify-content: space-between;">
+            <h4 style="margin: 0;">Your Samples</h4>
+            <button id="smpReload" class="secondary" style="padding: 6px 10px; font-size: 13px;">Reload</button>
+          </div>
+          <div id="smpList" class="smp-list"></div>
+        </div>
+
+        <div class="card">
+          <h4>Live's Library</h4>
+          <p class="control-label">Samples from Live's Core Library and your User Library, from the browser index (System → rebuild it if this is empty). These load through Live's browser, so send them to a Simpler or a Drum Rack pad.</p>
+          <input id="smpLibQuery" type="text" placeholder="Search: kick, 808, clap, vinyl…" style="width: 100%; margin-top: 12px;" />
+          <div id="smpLibList" class="smp-list"></div>
+        </div>
+      </div>
+
       <!-- SYSTEM VIEW -->
       <div id="view-system" class="view-section">
         <h2>System & Logs</h2>
@@ -1441,6 +1523,10 @@
         if (v === 'performance') {
           loadPerformanceKnobs();
         }
+        if (v === 'samples') {
+          smpLoadList();
+          smpSearchLibrary();
+        }
       }
 
       function switchComposeTab(tabName) {
@@ -1457,6 +1543,15 @@
 
         document.querySelectorAll('.compose-tab').forEach(btn => btn.classList.remove('active'));
         document.querySelectorAll(`.compose-tab[data-compose-tab="${String(tabName)}"]`).forEach(btn => btn.classList.add('active'));
+      }
+
+      function switchSubTab(btn, tabId) {
+        const parent = btn.closest('.modal-body, .card') || document;
+        parent.querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        parent.querySelectorAll('.sub-panel').forEach(p => p.classList.remove('active'));
+        const panel = document.getElementById(tabId);
+        if (panel) panel.classList.add('active');
       }
 
       // --- Core Functions ---
@@ -1878,6 +1973,7 @@
       window.setBusy = setBusy;
       window.switchView = switchView;
       window.switchComposeTab = switchComposeTab;
+      window.switchSubTab = switchSubTab;
 
       let _ttsLastUrl = "";
 
@@ -3011,6 +3107,7 @@
       const TRACK_PICKERS = {
         voiceMidi: { select: "ttsMidiTrack", fallback: "ttsMidiTrackIndex", hint: "ttsMidiTrackHint", pref: "pulse.voiceMidiTrack", midiOnly: true },
         vox: { select: "voxTrack", fallback: "voxTrackIndex", hint: "voxTrackHint", pref: "pulse.voxTrack", preferName: "PS-VOX" },
+        sampleDrum: { select: "smpTrack", fallback: "smpTrackIndex", hint: "smpTrackHint", pref: "pulse.sampleDrumTrack", midiOnly: true },
       };
       let _pickerTracks = [];
       let _pickerSignature = null;
@@ -3038,6 +3135,9 @@
         let warn = false;
         if (!_pickerTracks.length) {
           msg = "Live isn't connected through PulseBridge, so enter the track number as shown in Live (1 = first track).";
+        } else if (key === "sampleDrum") {
+          if (!t) { msg = "This set has no MIDI tracks. Add one in Live for the Drum Rack."; warn = true; }
+          else if (!(t.devices || []).length) msg = "This track is empty, so a Drum Rack will be added to it.";
         } else if (cfg.midiOnly && !t) {
           msg = "This set has no MIDI tracks. Add one with a synth or Drum Rack in Live.";
           warn = true;
@@ -3196,6 +3296,290 @@
           setBusy(btn, false);
         }
       });
+
+      // =============================================
+      // SAMPLES
+      // Files are decoded in the browser and re-encoded as 16-bit WAV before upload, so any
+      // format the browser can play works and the server only ever handles plain WAV.
+      // =============================================
+      const SMP_PREF_TARGET = "pulse.sampleTarget";
+      let _smpLibTimer = null;
+      let _smpPreview = null;
+      let _smpRecorder = null;
+
+      function smpSay(id, msg) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = msg;
+      }
+
+      function encodeWav16(audioBuffer) {
+        const ch = Math.min(2, audioBuffer.numberOfChannels);
+        const n = audioBuffer.length;
+        const sr = audioBuffer.sampleRate;
+        const out = new DataView(new ArrayBuffer(44 + n * ch * 2));
+        const str = (o, t) => { for (let i = 0; i < t.length; i++) out.setUint8(o + i, t.charCodeAt(i)); };
+        str(0, "RIFF"); out.setUint32(4, 36 + n * ch * 2, true); str(8, "WAVE");
+        str(12, "fmt "); out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, ch, true);
+        out.setUint32(24, sr, true); out.setUint32(28, sr * ch * 2, true); out.setUint16(32, ch * 2, true); out.setUint16(34, 16, true);
+        str(36, "data"); out.setUint32(40, n * ch * 2, true);
+        const data = [];
+        for (let c = 0; c < ch; c++) data.push(audioBuffer.getChannelData(c));
+        let o = 44;
+        for (let i = 0; i < n; i++) {
+          for (let c = 0; c < ch; c++) {
+            const v = Math.max(-1, Math.min(1, data[c][i]));
+            out.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+            o += 2;
+          }
+        }
+        return new Blob([out.buffer], { type: "audio/wav" });
+      }
+
+      async function toWav16(blob) {
+        const Ctx = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+        const ctx = new Ctx(2, 1, 44100);
+        const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+        return encodeWav16(audio);
+      }
+
+      async function smpUpload(wavBlob, name, trim) {
+        const fd = new FormData();
+        fd.append("file", wavBlob, (name || "sample") + ".wav");
+        fd.append("name", name || "");
+        fd.append("trim", trim ? "true" : "false");
+        return postForm("/samples/import", fd);
+      }
+
+      async function smpImportFile(file) {
+        const name = file.name.replace(/\.[^.]+$/, "");
+        // A WAV that's already 16-bit goes up untouched, keeping its sample rate.
+        if (/\.wave?$/i.test(file.name)) {
+          const resp = await smpUpload(file, name, false);
+          if (resp.ok || resp.error !== "unsupported_wav") return resp;
+        }
+        let wav;
+        try {
+          wav = await toWav16(file);
+        } catch (e) {
+          return { ok: false, error: "decode_failed", hint: "This browser can't decode that file; convert it to WAV first." };
+        }
+        return smpUpload(wav, name, false);
+      }
+
+      async function smpImportFiles(files) {
+        const list = Array.from(files || []);
+        if (!list.length) return;
+        let done = 0;
+        const failed = [];
+        for (const f of list) {
+          smpSay("smpImportStatus", `Importing ${f.name} (${done + 1} of ${list.length})…`);
+          try {
+            const resp = await smpImportFile(f);
+            if (resp && resp.ok) done++;
+            else failed.push(`${f.name}: ${(resp && (resp.hint || resp.error)) || "failed"}`);
+          } catch (e) {
+            failed.push(`${f.name}: ${e.message}`);
+          }
+        }
+        smpSay("smpImportStatus", `Imported ${done} of ${list.length}.` + (failed.length ? ` ${failed.join(" ")}` : ""));
+        await smpLoadList();
+      }
+
+      function smpFmtDuration(s) {
+        if (typeof s !== "number") return "";
+        return s < 10 ? `${s.toFixed(2)} s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+      }
+
+      async function smpLoadList() {
+        const el = document.getElementById("smpList");
+        if (!el) return;
+        try {
+          const resp = await get("/samples/list");
+          const items = (resp && resp.samples) || [];
+          if (!items.length) {
+            el.innerHTML = `<div class="kb-meta">No samples yet. Drop some files above or record one.</div>`;
+            return;
+          }
+          el.innerHTML = items.map(s => `
+            <div class="smp-row">
+              <button class="secondary" data-smp-play="${escapeHtml(s.url)}" title="Preview">▶</button>
+              <span class="smp-name" title="${escapeHtml(s.filename)}">${escapeHtml(s.name)}</span>
+              <span class="kb-meta">${escapeHtml(smpFmtDuration(s.duration_s))} · ${s.channels === 1 ? "mono" : "stereo"} · ${Math.round(s.sample_rate / 100) / 10} kHz</span>
+              <button class="primary" data-smp-send="${escapeHtml(s.filename)}">Send</button>
+              <button class="secondary" data-smp-delete="${escapeHtml(s.filename)}" title="Remove from Pulse" style="color: var(--danger);">✕</button>
+            </div>`).join("");
+        } catch (e) {
+          el.innerHTML = `<div class="kb-meta">Couldn't load samples: ${escapeHtml(e.message)}</div>`;
+        }
+      }
+
+      async function smpSearchLibrary() {
+        const el = document.getElementById("smpLibList");
+        if (!el) return;
+        const q = (document.getElementById("smpLibQuery")?.value || "").trim();
+        try {
+          const resp = await get(`/samples/library?limit=60&q=${encodeURIComponent(q)}`);
+          const items = (resp && resp.items) || [];
+          if (!resp.indexed) {
+            el.innerHTML = `<div class="kb-meta">The browser index hasn't been built yet. Rebuild it from System with Live connected.</div>`;
+            return;
+          }
+          if (!items.length) {
+            el.innerHTML = `<div class="kb-meta">No library samples match "${escapeHtml(q)}".</div>`;
+            return;
+          }
+          el.innerHTML = items.map((it, i) => `
+            <div class="smp-row">
+              <span class="smp-name" title="${escapeHtml(it.path + "/" + it.name)}">${escapeHtml(it.name)}</span>
+              <span class="kb-meta">${escapeHtml(it.path)}</span>
+              <button class="primary" data-smp-lib="${i}">Send</button>
+            </div>`).join("");
+          el._items = items;
+        } catch (e) {
+          el.innerHTML = `<div class="kb-meta">Search failed: ${escapeHtml(e.message)}</div>`;
+        }
+      }
+
+      function smpRenderTarget() {
+        const target = document.getElementById("smpTarget")?.value || "audio_clip";
+        const drum = target === "drum_pad";
+        const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? "" : "none"; };
+        show("smpDrumFields", drum);
+        show("smpTrackHint", drum);
+        show("smpLoopLabel", target === "audio_clip");
+        show("smpFireLabel", !drum);
+      }
+
+      async function smpSend(btn, sample) {
+        const target = document.getElementById("smpTarget")?.value || "audio_clip";
+        if (sample.library_path && target === "audio_clip") {
+          smpSay("smpSendStatus", "Library samples can't become audio clips from a script. Choose Simpler or Drum Rack pad above.");
+          return;
+        }
+        const body = { ...sample, target, fire: !!document.getElementById("smpFire")?.checked };
+        if (target === "audio_clip") body.loop = !!document.getElementById("smpLoop")?.checked;
+        if (target === "drum_pad") {
+          const ti = pickedTrackIndex("sampleDrum");
+          if (ti === null) { smpSay("smpSendStatus", "Pick the drum track first."); return; }
+          body.track_index = ti;
+          const note = (document.getElementById("smpPadNote")?.value || "").trim();
+          if (note !== "") body.pad_note = parseInt(note, 10);
+        }
+        smpSay("smpSendStatus", "Sending to Live…");
+        setBusy(btn, true);
+        try {
+          const resp = await post("/samples/send_to_live", body);
+          if (!resp || !resp.ok) {
+            const hint = resp && resp.hint ? ` ${resp.hint}` : "";
+            const file = resp && resp.file_path ? ` File: ${resp.file_path}` : "";
+            smpSay("smpSendStatus", `Couldn't send: ${(resp && (resp.detail || resp.error)) || "unknown error"}.${hint}${file}`);
+            return;
+          }
+          let msg;
+          if (resp.method === "drum_pad") {
+            msg = `Loaded onto pad ${midiNoteName(resp.pad_note)} (${resp.pad_note}) on track ${resp.track_index + 1}.`;
+          } else {
+            msg = `Sent to track ${resp.track_index + 1}, slot ${resp.clip_slot_index + 1}` + (resp.method === "simpler" ? " (Simpler)." : ".");
+          }
+          const v = resp.verified;
+          if (v) msg += v.playing ? " Playing ✓" : ` Not heard: ${(v.reasons || []).join("; ")}`;
+          if (resp.warnings && resp.warnings.length) msg += ` (${resp.warnings.join(" ")})`;
+          smpSay("smpSendStatus", msg);
+          log("Sample → Live: " + msg);
+        } catch (e) {
+          smpSay("smpSendStatus", "Send failed: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      }
+
+      async function smpToggleRecord() {
+        const btn = document.getElementById("smpRecBtn");
+        if (_smpRecorder) {
+          _smpRecorder.stop();
+          return;
+        }
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        } catch (e) {
+          smpSay("smpImportStatus", "Microphone unavailable: " + e.message);
+          return;
+        }
+        const chunks = [];
+        const rec = new MediaRecorder(stream);
+        rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunks.push(ev.data); };
+        rec.onstop = async () => {
+          stream.getTracks().forEach(t => t.stop());
+          _smpRecorder = null;
+          btn.textContent = "Record";
+          const name = (document.getElementById("smpRecName")?.value || "").trim() || "recording";
+          smpSay("smpImportStatus", "Saving recording…");
+          try {
+            const wav = await toWav16(new Blob(chunks, { type: rec.mimeType || "audio/webm" }));
+            const resp = await smpUpload(wav, name, !!document.getElementById("smpRecTrim")?.checked);
+            smpSay("smpImportStatus", resp && resp.ok ? `Saved "${resp.name}" (${smpFmtDuration(resp.duration_s)}).` : `Couldn't save: ${(resp && (resp.hint || resp.error)) || "failed"}`);
+          } catch (e) {
+            smpSay("smpImportStatus", "Couldn't save the recording: " + e.message);
+          }
+          await smpLoadList();
+        };
+        rec.start();
+        _smpRecorder = rec;
+        btn.textContent = "Stop";
+        smpSay("smpImportStatus", "Recording… press Stop when you're done.");
+      }
+
+      (function initSamples() {
+        const drop = document.getElementById("smpDrop");
+        const fileInput = document.getElementById("smpFile");
+        if (!drop || !fileInput) return;
+        drop.addEventListener("click", () => fileInput.click());
+        drop.addEventListener("keydown", (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); fileInput.click(); } });
+        fileInput.addEventListener("change", () => { smpImportFiles(fileInput.files); fileInput.value = ""; });
+        drop.addEventListener("dragover", (ev) => { ev.preventDefault(); drop.classList.add("over"); });
+        drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+        drop.addEventListener("drop", (ev) => {
+          ev.preventDefault();
+          drop.classList.remove("over");
+          smpImportFiles(ev.dataTransfer && ev.dataTransfer.files);
+        });
+
+        const targetSel = document.getElementById("smpTarget");
+        const saved = _loadPref(SMP_PREF_TARGET);
+        if (saved && [...targetSel.options].some(o => o.value === saved)) targetSel.value = saved;
+        targetSel.addEventListener("change", () => { _savePref(SMP_PREF_TARGET, targetSel.value); smpRenderTarget(); });
+        smpRenderTarget();
+
+        document.getElementById("smpRecBtn")?.addEventListener("click", smpToggleRecord);
+        document.getElementById("smpReload")?.addEventListener("click", smpLoadList);
+        document.getElementById("smpLibQuery")?.addEventListener("input", () => {
+          clearTimeout(_smpLibTimer);
+          _smpLibTimer = setTimeout(smpSearchLibrary, 250);
+        });
+
+        document.getElementById("smpList")?.addEventListener("click", async (ev) => {
+          const b = ev.target.closest("button");
+          if (!b) return;
+          if (b.dataset.smpPlay) {
+            if (_smpPreview) _smpPreview.pause();
+            _smpPreview = new Audio(`${API_BASE}${b.dataset.smpPlay}`);
+            _smpPreview.play().catch(e => smpSay("smpSendStatus", "Preview failed: " + e.message));
+          } else if (b.dataset.smpSend) {
+            smpSend(b, { filename: b.dataset.smpSend });
+          } else if (b.dataset.smpDelete) {
+            if (!confirm("Remove this sample from Pulse? Copies already in Live stay.")) return;
+            await post("/samples/delete", { filename: b.dataset.smpDelete });
+            smpLoadList();
+          }
+        });
+        document.getElementById("smpLibList")?.addEventListener("click", (ev) => {
+          const b = ev.target.closest("button[data-smp-lib]");
+          const items = document.getElementById("smpLibList")._items || [];
+          const it = b && items[parseInt(b.dataset.smpLib, 10)];
+          if (it) smpSend(b, { library_path: it.path, library_name: it.name, library_uri: it.uri });
+        });
+      })();
 
       document.getElementById("btnTtsSaveRecipe")?.addEventListener("click", async () => {
         const btn = document.getElementById("btnTtsSaveRecipe");

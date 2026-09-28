@@ -110,6 +110,7 @@ class Commands(object):
             "load_item_at_path": self.load_item_at_path,
             "delete_device": self.delete_device,
             "get_drum_pads": self.get_drum_pads,
+            "load_item_to_drum_pad": self.load_item_to_drum_pad,
             "load_audio_clip": self.load_audio_clip,
             "get_track_meter": self.get_track_meter,
             # AbletonMCP-compatible commands (same names and result shapes).
@@ -580,12 +581,8 @@ class Commands(object):
             current = nxt
         return current
 
-    def load_item_at_path(self, params):
-        """
-        Load a browser item given its folder path and name (as stored in the Pulse browser
-        index). Walking the path is exact and fast, unlike searching the library by URI.
-        """
-        ti, track = self._track(params)
+    def _loadable_item(self, params):
+        """The browser item named by params path + name (or uri) inside that folder."""
         folder = self._item_at_path(params.get("path"))
         name = str(params.get("name") or "")
         uri = params.get("uri")
@@ -597,6 +594,15 @@ class Commands(object):
             raise CommandError("item_not_found: %s/%s" % (params.get("path"), name))
         if not item.is_loadable:
             raise CommandError("not_loadable: %s" % item.name)
+        return item
+
+    def load_item_at_path(self, params):
+        """
+        Load a browser item given its folder path and name (as stored in the Pulse browser
+        index). Walking the path is exact and fast, unlike searching the library by URI.
+        """
+        ti, track = self._track(params)
+        item = self._loadable_item(params)
         self._select_track_and_load(track, item)
         return {"loaded": True, "item_name": item.name, "track_index": ti}
 
@@ -686,6 +692,39 @@ class Commands(object):
             return {"track_index": ti, "rack": None, "pads": []}
         pads = [{"note": int(p.note), "name": p.name} for p in rack.drum_pads if len(p.chains) > 0]
         return {"track_index": ti, "rack": rack.name, "pads": pads}
+
+    def load_item_to_drum_pad(self, params):
+        """
+        Load a browser item (usually a sample) onto one pad of the track's first Drum Rack.
+        Live loads into the selected pad when the rack is the selected device, the same as
+        double-clicking a sample in the browser with a pad selected.
+        """
+        ti, track = self._track(params)
+        rack = next((d for d in track.devices if getattr(d, "can_have_drum_pads", False)), None)
+        if rack is None:
+            raise CommandError("no_drum_rack: %d" % ti)
+        note = _int(params, "pad_note", 36)
+        pad = next((p for p in rack.drum_pads if int(p.note) == note), None)
+        if pad is None:
+            raise CommandError("pad_out_of_range: %d" % note)
+        item = self._loadable_item(params)
+        view = self.song.view
+        view.selected_track = track
+        if hasattr(view, "select_device"):
+            view.select_device(rack)
+        rack.view.selected_drum_pad = pad
+        before = len(track.devices)
+        self.browser.load_item(item)
+        return {
+            "loaded": True,
+            "item_name": item.name,
+            "track_index": ti,
+            "pad_note": note,
+            "pad_name": pad.name,
+            "pad_filled": len(pad.chains) > 0,
+            # Live replacing the rack instead of filling the pad would change the device list.
+            "rack_intact": len(track.devices) == before and rack in list(track.devices),
+        }
 
     # ------------------------------------------------------------------ AbletonMCP compatibility
 
