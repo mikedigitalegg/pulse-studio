@@ -14,8 +14,9 @@ Pulse Studio is a modern web interface for AI-assisted music creation in Ableton
 
 ## Prereqs
 
-- Ableton Live running
-- AbletonOSC installed and running in Live
+- Ableton Live running (any edition: Lite, Intro, Standard or Suite)
+- **Recommended:** the PulseBridge Remote Script. Run `python pulse_bridge/install.py`, then select **PulseBridge** under Settings → Link, Tempo & MIDI → Control Surface. It replaces AbletonOSC and AbletonMCP with one reliable connection, pushes live changes, and detects your Live edition. See [pulse_bridge/README.md](pulse_bridge/README.md). The server falls back to AbletonOSC when PulseBridge isn't connected.
+- Legacy fallback: AbletonOSC installed and running in Live
 - AbletonOSC ports matching this repo defaults:
   - Ableton receives on UDP port `11000`
   - Responses (optional) sent to UDP port `11001`
@@ -65,6 +66,7 @@ Open **Pulse Studio** in your browser:
     *   Use **Style Pads** to instantly switch genres/kits (if your template supports it).
     *   Use **Macro Knobs** to tweak parameters live (requires mapping in Ableton).
 4.  **Knowledge** (sidebar): **Reload styles** pulls `knowledge/styles.json` from disk again; **Rebuild browser index** (or **Refresh styles + index**) rescans Live’s browser into `ableton_browser_index.json` via AbletonMCP (Live must be running). The **System** view also has index status / rebuild / search controls.
+5.  **Voice → Live**: after generating a voice, **Send to Live** (`POST /voice/send_to_live`) trims the TTS lead-in silence, normalizes it, and drops it into a Session slot on a `PS-VOX` audio track (created if missing) with warping and looping off, so it plays once at natural speed. It then launches the clip and watches the track meter to confirm it's audible; if not, it says why (muted, another track soloed, fader down, transport). Needs PulseBridge and Live 12.0.5+ for audio clips. On older Live it falls back to a Simpler on its own MIDI track: set `PULSE_USER_LIBRARY` if your User Library isn't in `Documents/Ableton/User Library`. After updating PulseBridge, re-select it under Control Surface so Live loads the new commands.
 
 ## Expected behavior
 

@@ -159,50 +159,6 @@
       }
       .view-section.active { display: block; }
 
-      .main-content:has(#view-visualizer.active) {
-        padding: 0;
-        overflow: hidden;
-        display: flex;
-        flex-direction: column;
-      }
-      #view-visualizer.view-section {
-        flex: 1;
-        display: none;
-        flex-direction: column;
-        min-height: 0;
-        max-width: none;
-        margin: 0;
-        padding: 0;
-        padding-bottom: 0;
-      }
-      #view-visualizer.view-section.active { display: flex; }
-      .visualizer-toolbar {
-        flex-shrink: 0;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        flex-wrap: wrap;
-        padding: 12px 16px;
-        background: var(--bg-sidebar);
-        border-bottom: 1px solid var(--border);
-        font-size: 13px;
-        color: var(--text-muted);
-      }
-      .visualizer-toolbar a {
-        color: var(--accent);
-        text-decoration: none;
-        font-weight: 500;
-      }
-      .visualizer-toolbar a:hover { text-decoration: underline; }
-      #pulseCanvasFrame {
-        flex: 1;
-        width: 100%;
-        min-height: 0;
-        border: none;
-        background: #050608;
-      }
-
       h2 { font-size: 24px; font-weight: 600; margin: 0 0 20px; color: white; }
       h3 { font-size: 18px; font-weight: 500; margin: 24px 0 16px; color: var(--text-main); }
       h4 { font-size: 14px; font-weight: 600; margin: 0 0 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
@@ -451,7 +407,7 @@
       }
 
       /* Logs */
-      pre#log, pre#statusDetails, pre#pairApplied {
+      pre#log, pre#statusDetails {
         background-color: var(--bg-input);
         padding: 12px;
         border-radius: 8px;
@@ -526,6 +482,55 @@
       }
       .modal-title { font-weight: 700; color: white; }
       .modal-body { padding: 18px; }
+
+      /* Live connection (PulseBridge) */
+      .live-pill {
+        display: flex; align-items: center; gap: 8px;
+        margin: -18px 0 20px; padding: 6px 10px;
+        border: 1px solid var(--border); border-radius: 999px;
+        background: var(--bg-input); color: var(--text-muted);
+        font-size: 12px; cursor: pointer; user-select: none;
+      }
+      .live-pill:hover { color: var(--text-main); }
+      .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+      .live-pill[data-state="bridge"] .live-dot { background: var(--success); box-shadow: 0 0 6px var(--success); }
+      .live-pill[data-state="osc"] .live-dot { background: #f59e0b; }
+      .live-pill[data-state="offline"] .live-dot { background: var(--danger); }
+      .live-pill-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+      .beat-row { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+      .beat-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--bg-input); border: 1px solid var(--border); transition: background 0.05s; }
+      .beat-dot.on { background: var(--accent); border-color: var(--accent); }
+      .beat-dot.on.downbeat { background: var(--success); border-color: var(--success); }
+      .beat-pos { margin-left: auto; }
+      .transport-btn.play.is-playing { background-color: var(--success); color: #0b1410; }
+
+      .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+      .stat { background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+      .stat-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 4px; }
+      .stat-value { font-size: 20px; font-weight: 600; color: white; font-variant-numeric: tabular-nums; }
+      .live-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .live-table th { text-align: left; font-weight: 500; color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+      .live-table td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      .live-table tr.playing td:first-child { box-shadow: inset 3px 0 0 var(--success); }
+      .muted { color: var(--text-muted); }
+      .chip { display: inline-block; padding: 1px 8px; margin: 0 4px 4px 0; border-radius: 999px; background: var(--bg-input); border: 1px solid var(--border); font-size: 12px; }
+      .chip.ok { color: var(--success); border-color: rgba(16, 185, 129, 0.35); }
+      .chip.no { color: var(--text-muted); text-decoration: line-through; }
+      .kv { display: grid; grid-template-columns: 160px 1fr; gap: 6px 12px; font-size: 13px; }
+      .kv dt { color: var(--text-muted); }
+      .kv dd { margin: 0; }
+      .callout { border: 1px solid rgba(245, 158, 11, 0.35); background: rgba(245, 158, 11, 0.08); border-radius: 8px; padding: 12px 14px; font-size: 13px; line-height: 1.5; }
+      .callout code { font-family: var(--font-mono); font-size: 12px; }
+
+      /* Visualizer (Live output meters) */
+      .viz-stage { padding: 0; overflow: hidden; background: #07080b; }
+      #vizCanvas { display: block; width: 100%; height: 360px; }
+      .viz-tracks { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 20px; }
+      .viz-track { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 10px; font-size: 12px; }
+      .viz-track-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .viz-bar { height: 8px; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border); overflow: hidden; }
+      .viz-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--success), var(--accent)); border-radius: 4px; }
     </style>
   </head>
   <body>
@@ -534,38 +539,22 @@
       <div class="logo">
         <span>●</span> Pulse Studio
       </div>
-      
+      <div id="livePill" class="live-pill" data-state="unknown" title="Live connection. Click for details." onclick="switchView('system')">
+        <span class="live-dot"></span><span id="livePillText" class="live-pill-text">Connecting to Live…</span>
+      </div>
+
       <div class="nav-menu">
         <div class="nav-item active" data-view="compose" onclick="switchView('compose')">
-          <span>Composition</span>
+          <span>Compose</span>
         </div>
-
-        <div class="card">
-          <h4>Overall Style &amp; Prompt</h4>
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Shared by Full Track + Single Scene generators.</p>
-          <div style="margin-bottom: 12px;">
-            <label class="control-label">Style</label>
-            <select id="commonStyle">
-              <option value="techno">Techno</option>
-              <option value="acid_techno">Acid Techno</option>
-              <option value="house">House</option>
-              <option value="dnb">DnB</option>
-              <option value="breakbeat">Breakbeat</option>
-              <option value="garage">Garage</option>
-              <option value="tribal">Tribal</option>
-              <option value="psytrance">Psytrance</option>
-            </select>
-          </div>
-          <div style="margin-bottom: 12px;">
-            <label class="control-label">Prompt (Optional)</label>
-            <input id="commonPrompt" type="text" placeholder="e.g. driving, minimal...">
-          </div>
-          <div class="row">
-            <button id="openSequencers" class="secondary" style="margin-left: auto;">Open Sequencers</button>
-          </div>
+        <div class="nav-item" data-view="knowledge" onclick="switchView('knowledge')">
+          <span>Styles</span>
         </div>
         <div class="nav-item" data-view="performance" onclick="switchView('performance')">
-          <span>Performance</span>
+          <span>Perform</span>
+        </div>
+        <div class="nav-item" data-view="dashboard" onclick="switchView('dashboard')">
+          <span>Live Overview</span>
         </div>
         <div class="nav-item" data-view="visualizer" onclick="switchView('visualizer')">
           <span>Visualizer</span>
@@ -573,15 +562,13 @@
         <div class="nav-item" data-view="system" onclick="switchView('system')">
           <span>System</span>
         </div>
-        <div class="nav-item" data-view="knowledge" onclick="switchView('knowledge')">
-          <span>Knowledge</span>
-        </div>
-        <div class="nav-item" data-view="dashboard" onclick="switchView('dashboard')">
-          <span>Dashboard</span>
-        </div>
       </div>
 
       <div class="transport-panel">
+        <div class="beat-row" aria-label="Beat position">
+          <span class="beat-dot"></span><span class="beat-dot"></span><span class="beat-dot"></span><span class="beat-dot"></span>
+          <span id="beatPos" class="beat-pos">–</span>
+        </div>
         <div class="transport-controls">
           <button id="play" class="transport-btn play">PLAY</button>
           <button id="stop" class="transport-btn stop">STOP</button>
@@ -598,7 +585,7 @@
     <div id="sequencersModal" class="modal-backdrop" role="dialog" aria-modal="true">
       <div class="modal">
         <div class="modal-header">
-          <div class="modal-title">Sequencers</div>
+          <div class="modal-title">Generated patterns</div>
           <button id="closeSequencers" class="secondary">Close</button>
         </div>
         <div class="modal-body">
@@ -648,13 +635,18 @@
     <!-- Main Content -->
     <div class="main-content">
       
-      <!-- VISUALIZER (Pulse Canvas) -->
+      <!-- VISUALIZER VIEW (Live output meters via PulseBridge; no microphone) -->
       <div id="view-visualizer" class="view-section">
-        <div class="visualizer-toolbar">
-          <span>Pulse Canvas — capture tab audio, a loopback device, or system audio as in the standalone app.</span>
-          <a href="/pulse_canvas/" target="_blank" rel="noopener">Open in new tab</a>
+        <h2>Visualizer</h2>
+        <div id="vizOffline" class="callout" style="margin-bottom: 20px; display: none;"></div>
+        <div class="card viz-stage"><canvas id="vizCanvas" aria-label="Master output level and beat pulse"></canvas></div>
+        <div class="card">
+          <h4>Track Output</h4>
+          <div id="vizTracks" class="viz-tracks"></div>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
+            Levels come straight from Live's meters (about 10 per second), so there's nothing to route and no microphone access.
+          </div>
         </div>
-        <iframe id="pulseCanvasFrame" title="Pulse Canvas visualizer" src="/pulse_canvas/"></iframe>
       </div>
 
       <!-- DASHBOARD VIEW -->
@@ -663,26 +655,56 @@
           <h2>Live Overview</h2>
           <button id="refreshStatus" class="secondary" style="font-size: 12px;">Refresh Status</button>
         </div>
-        
+
+        <div id="liveOverviewOffline" class="callout" style="margin-bottom: 20px; display: none;"></div>
+
         <div class="card">
-          <div style="font-size: 13px; color: var(--text-muted);">
-            Dashboard is for quick status checks. Use Composition → Open Sequencers to view the live sequencer panels.
+          <div class="stat-grid">
+            <div class="stat"><div class="stat-label">Transport</div><div id="ovTransport" class="stat-value">–</div></div>
+            <div class="stat"><div class="stat-label">Tempo</div><div id="ovTempo" class="stat-value">–</div></div>
+            <div class="stat"><div class="stat-label">Position</div><div id="ovPosition" class="stat-value">–</div></div>
+            <div class="stat"><div class="stat-label">Key</div><div id="ovKey" class="stat-value">–</div></div>
+            <div class="stat"><div class="stat-label">Tracks</div><div id="ovTracks" class="stat-value">–</div></div>
+            <div class="stat"><div class="stat-label">Scenes</div><div id="ovScenes" class="stat-value">–</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h4>Tracks</h4>
+          <table class="live-table">
+            <thead><tr><th style="width: 40px;">#</th><th>Name</th><th>Devices</th><th style="width: 110px;">Clip</th></tr></thead>
+            <tbody id="ovTrackRows"><tr><td colspan="4" class="muted">No data yet.</td></tr></tbody>
+          </table>
+          <div style="font-size: 12px; color: var(--text-muted); margin-top: 12px;">
+            Updates live from Ableton via PulseBridge. Compose → View generated patterns shows what Pulse Studio wrote.
           </div>
         </div>
       </div>
 
       <!-- COMPOSITION VIEW -->
       <div id="view-compose" class="view-section active">
-        <h2>Composition Tools</h2>
+        <h2>Compose</h2>
 
         <div class="card" style="border: 1px solid rgba(255,255,255,0.14);">
-          <h3 style="margin-top: 0; margin-bottom: 6px;">Track Generator</h3>
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Pick a workflow: generate a full arrangement or generate a single scene you can loop and build from.</p>
-          <div class="compose-tabs" style="margin-top: 10px;">
+          <div class="grid-3" style="margin-bottom: 12px; align-items: end;">
+            <div>
+              <label class="control-label" for="commonStyle">Style</label>
+              <select id="commonStyle"><option value="">Loading styles…</option></select>
+            </div>
+            <div style="grid-column: span 2;">
+              <label class="control-label" for="commonPrompt">Prompt (optional)</label>
+              <input id="commonPrompt" type="text" placeholder="e.g. driving, minimal, dark warehouse">
+            </div>
+          </div>
+          <div class="row" style="margin-bottom: 14px; font-size: 12px; color: var(--text-muted);">
+            <span id="commonStyleSummary"></span>
+            <button type="button" class="secondary" style="margin-left: auto; font-size: 12px;" onclick="switchView('knowledge')">Add or edit styles</button>
+            <button id="openSequencers" class="secondary" style="font-size: 12px;">View generated patterns</button>
+          </div>
+          <div class="compose-tabs">
             <button class="compose-tab active" data-compose-tab="full" onclick="switchComposeTab('full')">Full Track</button>
             <button class="compose-tab" data-compose-tab="scene" onclick="switchComposeTab('scene')">Single Scene</button>
-            <button class="compose-tab" data-compose-tab="voice" onclick="switchComposeTab('voice')">Voice (Optional)</button>
-            <div style="margin-left: auto; font-size: 12px; color: var(--text-muted); align-self: center;">Overall style + prompt are in the sidebar.</div>
+            <button class="compose-tab" data-compose-tab="voice" onclick="switchComposeTab('voice')">Voice</button>
           </div>
         </div>
 
@@ -690,19 +712,19 @@
           <!-- Full Track Generator -->
           <div class="card" id="fullTrackArranger">
             <h4>Full Track Arranger</h4>
-            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Generate a complete set of scenes (Intro, Main, Break, Drop, Outro).</p>
-            
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Generates a set of scenes (Intro, Main, Break, Drop, Outro…) into consecutive scene slots, then plays them in order.</p>
+
             <div class="grid-3" style="margin-bottom: 16px;">
               <div>
-                 <label class="control-label">Start Slot</label>
+                 <label class="control-label" for="trackStartSlot">First scene slot</label>
                  <input id="trackStartSlot" type="number" min="0" value="0">
               </div>
                <div>
-                 <label class="control-label">Bars Per Scene</label>
+                 <label class="control-label" for="trackBarsPerScene">Pattern length (bars, 1–4)</label>
                  <input id="trackBarsPerScene" type="number" min="1" max="4" value="1">
               </div>
                <div>
-                 <label class="control-label">Clip Bars</label>
+                 <label class="control-label" for="trackClipBars">Clip length (bars, 1–16)</label>
                  <input id="trackClipBars" type="number" min="1" max="16" value="8">
                </div>
             </div>
@@ -713,8 +735,8 @@
                 <label style="font-size: 13px;"><input type="checkbox" id="trackApplyInstruments" checked> Choose & load instruments before composing</label>
               </div>
               <div>
-                <label class="control-label">Instrument Candidate Limit</label>
-                <input id="trackInstrumentLimit" type="number" min="20" max="200" step="10" value="120">
+                <label class="control-label">Existing Instruments</label>
+                <label style="font-size: 13px;"><input type="checkbox" id="trackReplaceInstruments"> Replace instruments already on the Pulse tracks</label>
               </div>
               <div>
                 <label class="control-label">Instrument Prompt (optional)</label>
@@ -729,8 +751,9 @@
             
             <div class="row" style="margin-bottom: 16px;">
               <button id="trackGenerate" class="primary" data-busy-text="Generating...">Generate Full Track</button>
-              <button id="trackAutoPlay" class="secondary">Auto-Play Arrangement</button>
-              <button id="trackAutoStop" class="secondary">Stop Auto-Play</button>
+              <button id="trackAutoPlay" class="secondary" title="Loop the playlist below in Live">Play arrangement</button>
+              <button id="trackAutoStop" class="secondary">Stop arrangement</button>
+              <button id="trackRepick" class="secondary" data-busy-text="Picking..." title="Choose a new set of instruments for all Pulse tracks without regenerating clips">Re-pick Instruments</button>
             </div>
             
             <div class="row" style="margin-bottom: 16px;">
@@ -755,8 +778,8 @@
             </div>
   
             <div style="margin-top: 12px;">
-              <label class="control-label">Instrument Apply (Debug)</label>
-              <pre id="trackInstrumentDebug" style="max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word;"></pre>
+              <label class="control-label">Instruments</label>
+              <div id="trackInstrumentDebug" style="font-size: 13px;"><span class="muted">Generate a track or re-pick to choose instruments.</span></div>
             </div>
           </div>
         </div>
@@ -765,75 +788,51 @@
           <!-- Pair Generator -->
           <div class="card" id="singleSceneGenerator">
           <h4>Single Scene Generator</h4>
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Generate one scene (Drums + Bass + layers) into a target slot.</p>
-          
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Generate one scene into a single scene slot, with the layers you tick. Good for building a loop you can extend.</p>
+
           <div class="grid-3" style="margin-bottom: 16px;">
             <div>
-               <label class="control-label">Bars</label>
+               <label class="control-label" for="pairBars">Pattern length (bars, 1–4)</label>
                <input id="pairBars" type="number" min="1" max="4" value="1">
             </div>
             <div style="grid-column: span 2;">
-              <label class="control-label">Target Scene</label>
+              <label class="control-label" for="pairDrumSlot">Scene slot</label>
               <div style="display:flex; gap:10px; align-items:center;">
                 <input id="pairDrumSlot" type="number" min="0" value="0" style="width: 120px;">
-                <button id="pairFindNextSlot" class="secondary" data-busy-text="Finding...">Find Next Free</button>
-                <div style="font-size: 12px; color: var(--text-muted);">Avoids overwriting existing clips.</div>
+                <button id="pairFindNextSlot" class="secondary" data-busy-text="Finding...">Find next empty</button>
+                <div style="font-size: 12px; color: var(--text-muted);">Existing clips in this slot are overwritten.</div>
               </div>
             </div>
           </div>
 
-          <div class="grid-2" style="margin-bottom: 16px;">
-            <div>
-               <label class="control-label">Drum Slot (Track 0)</label>
-               <input id="pairDrumSlotMirror" type="number" min="0" value="0" disabled>
-            </div>
-            <div>
-               <label class="control-label">Bass Slot (Track 1)</label>
-               <input id="pairBassSlot" type="number" min="0" value="0">
-            </div>
-          </div>
-          
           <div class="row" style="margin-bottom: 16px;">
+             <span class="control-label" style="margin: 0;">Layers</span>
              <label style="font-size: 13px;"><input type="checkbox" id="pairIncludeDrums" checked> Drums</label>
              <label style="font-size: 13px;"><input type="checkbox" id="pairIncludeBass" checked> Bass</label>
              <label style="font-size: 13px;"><input type="checkbox" id="pairIncludePerc" checked> Perc</label>
              <label style="font-size: 13px;"><input type="checkbox" id="pairIncludeStabs" checked> Stabs</label>
              <label style="font-size: 13px;"><input type="checkbox" id="pairIncludeFx"> FX</label>
-             <label style="font-size: 13px; margin-left: 10px;"><input type="checkbox" id="pairLinkSlots" checked> Link Slots</label>
           </div>
 
           <div class="row">
-            <button id="pairGenerate" class="secondary" data-busy-text="Generating...">Generate Only</button>
-            <button id="pairGenerateAndLaunch" class="primary" data-busy-text="Generating...">Generate & Launch</button>
-            <button id="pairSave" class="secondary" style="margin-left: auto;">Save JSON</button>
-            <button id="pairLoad" class="secondary">Load JSON</button>
-            <input id="pairLoadFile" type="file" accept="application/json" style="display:none" />
+            <button id="pairGenerateAndLaunch" class="primary" data-busy-text="Generating...">Generate &amp; Play</button>
+            <button id="pairGenerate" class="secondary" data-busy-text="Generating...">Generate only</button>
           </div>
-          
+
           <div style="margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px;">
              <div id="pairCommentary" style="font-size: 13px; color: var(--text-muted);"></div>
-             <pre id="pairApplied" style="display:none"></pre>
           </div>
         </div>
         </div>
 
         <div id="compose-panel-voice" class="compose-panel">
           <div class="card">
-            <h4>Voice Generator (Optional)</h4>
-            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Selectable, but not part of the main Track/Scene workflow.</p>
+            <h4>Voice Generator</h4>
+            <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">Make spoken vocal one-shots (text-to-speech + FX), preview them, and optionally turn them into a MIDI clip. Needs an OpenAI key.</p>
             <div class="grid-3" style="margin-bottom: 12px;">
               <div>
                 <label class="control-label">Style (Packs)</label>
-                <select id="ttsPackStyle">
-                  <option value="techno">Techno</option>
-                  <option value="acid_techno">Acid Techno</option>
-                  <option value="house">House</option>
-                  <option value="dnb">DnB</option>
-                  <option value="breakbeat">Breakbeat</option>
-                  <option value="garage">Garage</option>
-                  <option value="tribal">Tribal</option>
-                  <option value="psytrance">Psytrance</option>
-                </select>
+                <select id="ttsPackStyle"><option value="">Loading styles…</option></select>
               </div>
               <div>
                 <label class="control-label">Voice Pack</label>
@@ -905,7 +904,6 @@
               <div class="row">
                 <button id="btnTtsGenerate" class="primary" data-busy-text="Generating...">Generate</button>
                 <button id="btnTtsProcess" class="secondary" data-busy-text="Processing..." disabled>Reprocess</button>
-                <button id="btnTtsToMidi" class="secondary" data-busy-text="Creating MIDI..." disabled>Voice → MIDI</button>
                 <button id="btnTtsSaveRecipe" class="secondary" disabled>Save Settings</button>
                 <div id="ttsStatus" style="margin-left: auto; font-size: 12px; color: var(--text-muted);"></div>
               </div>
@@ -924,13 +922,6 @@
               </div>
             </div>
           </div>
-          <div class="row" style="margin-top: 10px;">
-            <label class="control-label" style="margin: 0;">MIDI Target Track</label>
-            <input id="ttsMidiTrackIndex" type="number" min="0" value="7" style="width: 90px;" />
-            <label class="control-label" style="margin: 0;">Clip Slot</label>
-            <input id="ttsMidiSlotIndex" type="number" min="0" value="0" style="width: 90px;" />
-            <div style="font-size: 12px; color: var(--text-muted);">Choose a track that has a synth/Drum Rack. MIDI clips won't make sound on audio tracks.</div>
-          </div>
           <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start;">
             <div>
               <label class="control-label">Preview</label>
@@ -942,124 +933,67 @@
               <div id="ttsPath" style="margin-top: 6px; font-size: 12px; color: var(--text-muted);"></div>
             </div>
           </div>
+          <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+            <label class="control-label">Send the audio to Live</label>
+            <div class="row">
+              <button id="btnTtsSendToLive" class="secondary" title="Put the current voice clip on the PS-VOX audio track in Live">Send to Live</button>
+              <label class="control-label" style="margin: 0;" for="ttsSendSlotIndex">Scene slot</label>
+              <input id="ttsSendSlotIndex" type="number" min="0" placeholder="auto" style="width: 90px;" />
+              <label style="font-size: 12px;"><input id="ttsSendFire" type="checkbox" checked /> Play &amp; check</label>
+              <div id="ttsSendStatus" style="font-size: 12px; color: var(--text-muted);"></div>
+            </div>
+          </div>
+
+          <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border);">
+            <label class="control-label">Or turn its rhythm into a MIDI clip</label>
+            <div class="grid-3" style="margin-bottom: 8px; align-items: end;">
+              <div>
+                <label class="control-label" for="ttsMidiTrack">Track</label>
+                <select id="ttsMidiTrack" style="display: none;"></select>
+                <input id="ttsMidiTrackIndex" type="number" min="1" placeholder="Track number (1 = first)" />
+              </div>
+              <div>
+                <label class="control-label" for="ttsMidiSlotIndex">Scene slot</label>
+                <input id="ttsMidiSlotIndex" type="number" min="0" placeholder="auto (next empty)" />
+              </div>
+              <div>
+                <label class="control-label" for="ttsMidiNote">Note</label>
+                <select id="ttsMidiNote">
+                  <option value="">Auto (lowest Drum Rack pad, or C3 on a synth)</option>
+                  <option value="36">C1 (36): first Drum Rack pad</option>
+                  <option value="48">C2 (48)</option>
+                  <option value="60">C3 (60)</option>
+                  <option value="72">C4 (72)</option>
+                </select>
+              </div>
+            </div>
+            <div id="ttsMidiTrackHint" class="kb-meta" style="margin-bottom: 8px;"></div>
+            <div class="row">
+              <button id="btnTtsToMidi" class="secondary" data-busy-text="Creating MIDI..." disabled>Voice → MIDI</button>
+              <div id="ttsMidiStatus" style="font-size: 12px; color: var(--text-muted);"></div>
+            </div>
+          </div>
         </div>
         
-        <!-- Individual Generators (Accordion Style) -->
-        <h3>Individual Tools</h3>
-        
-        <details class="card">
-           <summary style="cursor: pointer; font-weight: 600; padding-bottom: 4px;">Bass Generator</summary>
-           <div style="padding-top: 16px;">
-              <div class="grid-3" style="margin-bottom: 16px;">
-                 <select id="bassStyle"><option value="techno">Techno</option><option value="house">House</option><option value="dnb">DnB</option><option value="acid_techno">Acid</option></select>
-                 <input id="bassBars" type="number" min="1" max="4" value="1" placeholder="Bars">
-                 <input id="bassPrompt" type="text" placeholder="Prompt...">
-              </div>
-              <div class="grid-3" style="margin-bottom: 16px;">
-                 <input id="bassTrack" type="number" value="1" placeholder="Track">
-                 <input id="bassSlot" type="number" value="0" placeholder="Slot">
-              </div>
-              <div class="row">
-                 <button id="bassGenerate" class="secondary">Generate</button>
-                 <button id="bassGenerateAndLaunch" class="primary">Generate & Launch</button>
-              </div>
-              <div style="margin-top: 16px;">
-                 <div id="bassMeta" class="control-label"></div>
-                 <div id="bassSeq" class="seq-container" style="padding: 10px;"></div>
-                 <div class="row" style="margin-top: 12px;">
-                    <input id="bassTranspose" type="number" value="0" style="width: 80px;" placeholder="Transp">
-                    <input id="bassVelScale" type="range" min="0" max="2" step="0.05" value="1">
-                    <button id="applyBassTweaks" class="secondary">Apply Tweaks</button>
-                 </div>
-              </div>
-           </div>
-        </details>
-        
-        <details class="card" style="margin-top: 12px;">
-           <summary style="cursor: pointer; font-weight: 600; padding-bottom: 4px;">Drum Clip Generator</summary>
-           <div style="padding-top: 16px;">
-               <div class="grid-3" style="margin-bottom: 16px;">
-                 <select id="aiStyle"><option value="techno">Techno</option><option value="house">House</option><option value="dnb">DnB</option></select>
-                 <input id="aiBars" type="number" min="1" max="4" value="1">
-                 <input id="aiSlot" type="number" min="0" value="0">
-               </div>
-               <div class="row" style="margin-bottom: 16px;">
-                 <input id="aiPrompt" type="text" placeholder="Prompt..." style="flex: 1;">
-                 <button id="aiGenerate" class="secondary">Generate</button>
-                 <button id="aiGenerateAndLaunch" class="primary">Gen & Launch</button>
-               </div>
-               <div class="row">
-                 <label class="control-label">Velocity Scale</label>
-                 <input id="drumVelScale" type="range" min="0" max="2" step="0.05" value="1">
-                 <button id="applyDrumTweaks" class="secondary">Apply</button>
-               </div>
-           </div>
-        </details>
-        
-        <details class="card" style="margin-top: 12px;">
-           <summary style="cursor: pointer; font-weight: 600; padding-bottom: 4px;">Perc / Stabs / FX</summary>
-           <div style="padding-top: 16px;">
-              <p class="control-label">Use these to fill out the track layers.</p>
-              
-              <div style="border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
-                 <h4>Percussion</h4>
-                 <div class="row">
-                    <select id="percStyle" style="width: auto;"><option value="techno">Techno</option><option value="house">House</option></select>
-                    <input id="percBars" type="number" value="1" style="width: 60px;">
-                    <input id="percTrack" type="number" value="2" style="width: 60px;">
-                    <input id="percSlot" type="number" value="0" style="width: 60px;">
-                    <button id="percGenerate" class="secondary">Gen</button>
-                    <button id="percGenerateAndLaunch" class="primary">Launch</button>
-                 </div>
-                 <div id="percSeq" style="margin-top: 8px;"></div>
-              </div>
-
-              <div style="border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 16px;">
-                 <h4>Stabs</h4>
-                 <div class="row">
-                    <select id="stabsStyle" style="width: auto;"><option value="techno">Techno</option><option value="house">House</option></select>
-                    <input id="stabsBars" type="number" value="1" style="width: 60px;">
-                    <input id="stabsTrack" type="number" value="3" style="width: 60px;">
-                    <input id="stabsSlot" type="number" value="0" style="width: 60px;">
-                    <button id="stabsGenerate" class="secondary">Gen</button>
-                    <button id="stabsGenerateAndLaunch" class="primary">Launch</button>
-                 </div>
-                 <div id="stabsSeq" style="margin-top: 8px;"></div>
-              </div>
-
-              <div>
-                 <h4>FX</h4>
-                 <div class="row">
-                    <select id="fxStyle" style="width: auto;"><option value="techno">Techno</option><option value="house">House</option></select>
-                    <input id="fxBars" type="number" value="1" style="width: 60px;">
-                    <input id="fxTrack" type="number" value="4" style="width: 60px;">
-                    <input id="fxSlot" type="number" value="0" style="width: 60px;">
-                    <button id="fxGenerate" class="secondary">Gen</button>
-                    <button id="fxGenerateAndLaunch" class="primary">Launch</button>
-                 </div>
-                 <div id="fxSeq" style="margin-top: 8px;"></div>
-              </div>
-           </div>
-        </details>
-
       </div>
       </div>
 
       <!-- PERFORMANCE VIEW -->
       <div id="view-performance" class="view-section">
-        <h2>Performance Control</h2>
+        <h2>Perform</h2>
 
         <div class="card">
           <h4>Vox Pads</h4>
-          <p class="control-label">Trigger one-shot clips on your Vox track. Load clips into Ableton slots manually (drag/drop), then fire them from here. Keybinds: 1-8.</p>
+          <p class="control-label">Fire the clips on your vox track: the PS-VOX track that Compose → Voice → Send to Live fills, or any track you pick. Pad 1 fires the first slot, pad 2 the next, and so on. Keys 1–8 fire the pads while this page is open.</p>
           <div class="row" style="margin-top: 12px;">
-            <label class="control-label" style="margin: 0;">Vox Track Index</label>
-            <input id="voxTrackIndex" type="number" min="0" value="6" style="width: 90px;" />
-            <label class="control-label" style="margin: 0;">Base Slot</label>
+            <label class="control-label" style="margin: 0;" for="voxTrack">Vox track</label>
+            <select id="voxTrack" style="display: none; width: auto; min-width: 220px;"></select>
+            <input id="voxTrackIndex" type="number" min="1" placeholder="Track number" style="width: 140px;" />
+            <label class="control-label" style="margin: 0;" for="voxBaseSlot">First slot</label>
             <input id="voxBaseSlot" type="number" min="0" value="0" style="width: 90px;" />
-            <button id="voxStopAll" class="secondary">Stop</button>
             <div id="voxStatus" style="margin-left: auto; font-size: 12px; color: var(--text-muted);"></div>
           </div>
+          <div id="voxTrackHint" class="kb-meta" style="margin-top: 6px;"></div>
           <div class="grid-3" style="margin-top: 12px;">
             <button class="secondary vox-pad" data-pad="1">Pad 1</button>
             <button class="secondary vox-pad" data-pad="2">Pad 2</button>
@@ -1117,22 +1051,14 @@
         </div>
         
         <div class="card">
-          <h4>Scene Master</h4>
-          <p class="control-label">Launch entire rows (Drums + Bass + Perc + FX).</p>
-          <div class="grid-3" style="margin-top: 16px;">
-            <button class="scene-btn secondary" data-scene="0">Scene 1 (Intro)</button>
-            <button class="scene-btn secondary" data-scene="1">Scene 2</button>
-            <button class="scene-btn secondary" data-scene="2">Scene 3</button>
-            <button class="scene-btn secondary" data-scene="3">Scene 4 (Break)</button>
-            <button class="scene-btn secondary" data-scene="4">Scene 5 (Drop)</button>
-            <button class="scene-btn secondary" data-scene="5">Scene 6</button>
-            <button class="scene-btn secondary" data-scene="6">Scene 7</button>
-            <button class="scene-btn secondary" data-scene="7">Scene 8 (Outro)</button>
-          </div>
+          <h4>Scenes</h4>
+          <p class="control-label">Launch a whole scene row in Live (every track's clip in that slot).</p>
+          <div id="sceneButtons" class="grid-3" style="margin-top: 16px;"></div>
         </div>
 
         <div class="card">
            <h4>Transitions</h4>
+           <p class="control-label">Fade Out ramps the Pulse tracks' volume down over 4 seconds, then stops. Wash &amp; Drop sweeps the drum and bass macros over 4 bars.</p>
            <div class="row">
              <button id="btnFadeOut" class="secondary" style="color: var(--danger); border-color: var(--danger);">Fade Out & Stop (4s)</button>
              <button id="btnWashDrop" class="primary">Wash & Drop (4 Bars)</button>
@@ -1140,20 +1066,8 @@
         </div>
 
         <div class="card">
-          <h4>Style Pads (Instant Launch)</h4>
-          <p class="control-label">Launches clips 0-5 on Track 0.</p>
-          <div id="performanceStylePads" class="grid-3" style="margin-top: 16px;">
-            <button class="style secondary" data-style="techno">Techno</button>
-            <button class="style secondary" data-style="house">House</button>
-            <button class="style secondary" data-style="dnb">DnB</button>
-            <button class="style secondary" data-style="breakbeat">Breakbeat</button>
-            <button class="style secondary" data-style="garage">Garage</button>
-            <button class="style secondary" data-style="tribal">Tribal</button>
-          </div>
-        </div>
-
-        <div class="card">
           <h4>Track Knobs</h4>
+          <p class="control-label">The first 8 parameters of the first device on each track.</p>
 
           <div class="track-knob-controls" style="margin-top: 12px;">
             <input id="perfTrackFilter" type="text" placeholder="Filter tracks... (e.g. drums, bass, vox)" />
@@ -1172,9 +1086,18 @@
         <h2>System & Logs</h2>
 
         <div class="card">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <h4 style="margin: 0;">Live Connection</h4>
+            <button id="btnBridgeRefresh" class="secondary" data-busy-text="Checking..." style="font-size: 12px;">Re-check Live</button>
+          </div>
+          <div id="bridgeSetup" class="callout" style="margin-bottom: 16px; display: none;"></div>
+          <dl id="bridgeInfo" class="kv"></dl>
+        </div>
+
+        <div class="card">
           <h4>Instrument Browser (Ableton)</h4>
           <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            Browse Ableton's Browser via the AbletonMCP Remote Script socket and load an item by URI onto a track.
+            Browse Ableton's Browser through PulseBridge (or the legacy AbletonMCP script) and load an item by URI onto a track.
           </p>
 
           <div class="grid-3" style="margin-bottom: 12px;">
@@ -1222,55 +1145,8 @@
         <div class="card">
           <h4>Cached Browser Index</h4>
           <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            Build a cached index of loadable browser items (saved to <code>knowledge/ableton_browser_index.json</code>) and search it instantly.
+            A cached index of Live's browser (saved to <code>knowledge/ableton_browser_index.json</code>) that the instrument picker searches. Rebuild it after installing packs or updating Live, or if loads fail with "URI not found".
           </p>
-
-          <div class="card" style="margin-bottom: 16px;">
-            <h4 style="margin-top: 0;">Smoke Tests</h4>
-            <div class="grid-3" style="margin-bottom: 12px;">
-              <div>
-                <label class="control-label">Min Scenes</label>
-                <input id="smokeMinScenes" type="number" min="1" max="128" value="8" />
-              </div>
-              <div>
-                <label class="control-label">Scene Test</label>
-                <button id="btnSmokeEnsureScenes" class="secondary" data-busy-text="Ensuring...">Ensure Scenes</button>
-                <button id="btnSmokeLabelScenes" class="secondary" data-busy-text="Labeling..." style="margin-top: 8px;">Label Scenes</button>
-              </div>
-              <div>
-                <label class="control-label">Instrument Load Test</label>
-                <button id="btnSmokeLoadFirst" class="secondary" data-busy-text="Loading...">Search & Load First Result</button>
-              </div>
-            </div>
-
-            <div class="grid-3" style="margin-bottom: 12px;">
-              <div>
-                <label class="control-label">Min Tracks</label>
-                <input id="smokeMinTracks" type="number" min="1" max="64" value="6" />
-              </div>
-              <div>
-                <label class="control-label">Track Test</label>
-                <button id="btnSmokeEnsureTracks" class="secondary" data-busy-text="Ensuring...">Ensure Tracks</button>
-                <button id="btnSmokeLabelTracks" class="secondary" data-busy-text="Labeling..." style="margin-top: 8px;">Label Tracks</button>
-              </div>
-              <div>
-                <label class="control-label">Track Label Prefix</label>
-                <input id="smokeTrackPrefix" type="text" value="PS-TRK" />
-              </div>
-            </div>
-            <div class="grid-2" style="gap: 12px;">
-              <div>
-                <label class="control-label">Smoke Test Output</label>
-                <pre id="smokeRaw" style="max-height: 180px;"></pre>
-              </div>
-              <div>
-                <label class="control-label">Notes</label>
-                <div style="font-size: 12px; color: var(--text-muted);">
-                  Use this to verify AbletonOSC scene creation and AbletonMCP browser loading before generating full tracks.
-                </div>
-              </div>
-            </div>
-          </div>
 
           <div class="grid-3" style="margin-bottom: 12px;">
             <div>
@@ -1358,94 +1234,125 @@
         </div>
         
         <div class="card">
-          <h4>Status</h4>
+          <h4>Event Log</h4>
+          <pre id="log"></pre>
+        </div>
+
+        <details class="card">
+          <summary style="cursor: pointer; font-weight: 600;">Diagnostics</summary>
+          <div style="margin-top: 12px;">
+            <h4 style="margin-top: 0;">Smoke tests</h4>
+            <div class="grid-3" style="margin-bottom: 12px;">
+              <div>
+                <label class="control-label">Min Scenes</label>
+                <input id="smokeMinScenes" type="number" min="1" max="128" value="8" />
+              </div>
+              <div>
+                <label class="control-label">Scene Test</label>
+                <button id="btnSmokeEnsureScenes" class="secondary" data-busy-text="Ensuring...">Ensure Scenes</button>
+                <button id="btnSmokeLabelScenes" class="secondary" data-busy-text="Labeling..." style="margin-top: 8px;">Label Scenes</button>
+              </div>
+              <div></div>
+            </div>
+
+            <div class="grid-3" style="margin-bottom: 12px;">
+              <div>
+                <label class="control-label">Min Tracks</label>
+                <input id="smokeMinTracks" type="number" min="1" max="64" value="6" />
+              </div>
+              <div>
+                <label class="control-label">Track Test</label>
+                <button id="btnSmokeEnsureTracks" class="secondary" data-busy-text="Ensuring...">Ensure Tracks</button>
+                <button id="btnSmokeLabelTracks" class="secondary" data-busy-text="Labeling..." style="margin-top: 8px;">Label Tracks</button>
+              </div>
+              <div>
+                <label class="control-label">Track Label Prefix</label>
+                <input id="smokeTrackPrefix" type="text" value="PS-TRK" />
+              </div>
+            </div>
+            <div class="grid-2" style="gap: 12px;">
+              <div>
+                <label class="control-label">Smoke Test Output</label>
+                <pre id="smokeRaw" style="max-height: 180px;"></pre>
+              </div>
+              <div>
+                <label class="control-label">Notes</label>
+                <div style="font-size: 12px; color: var(--text-muted);">
+                  Checks that Pulse Studio can create and rename scenes and tracks in Live. <strong>Label Tracks renames your tracks</strong> with the prefix, so use it on a test set.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top: 16px;">
+          <h4>Transport status (raw)</h4>
           <div id="statusSummary" style="margin-bottom: 10px; color: var(--success); font-family: var(--font-mono);"></div>
           <pre id="statusDetails"></pre>
         </div>
 
-        <div class="card">
-          <h4>Event Log</h4>
-          <pre id="log"></pre>
-        </div>
+        </details>
+
       </div>
 
       <!-- KNOWLEDGE VIEW -->
       <div id="view-knowledge" class="view-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-          <h2>Knowledge Base</h2>
+          <h2>Styles</h2>
           <div class="row">
-             <button id="reloadKnowledge" class="secondary">Reload from Disk</button>
-             <button id="saveKnowledge" class="primary">Save Changes</button>
+             <button id="reloadKnowledge" class="secondary" title="Discard unsaved edits and re-read knowledge/styles.json">Reload from disk</button>
+             <button id="saveKnowledge" class="primary">Save changes</button>
           </div>
-        </div>
-
-        <div class="card" style="margin-bottom: 20px;">
-          <h4>Refresh knowledge</h4>
-          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
-            <strong>Styles</strong> come from <code>knowledge/styles.json</code> on the server. The <strong>browser index</strong> (for MCP instrument picks) is stored in
-            <code>knowledge/ableton_browser_index.json</code> and must match this computer’s Live library — run after new packs, a Live update, or “URI not found” errors. Requires
-            <strong>Live</strong> open with <strong>AbletonMCP</strong> enabled.
-          </p>
-          <div class="grid-3" style="margin-bottom: 10px; align-items: end;">
-            <div>
-              <label class="control-label">Index category (rebuild)</label>
-              <select id="kbIndexCategory" style="width: 100%;">
-                <option value="all" selected>All</option>
-                <option value="instruments">Instruments</option>
-                <option value="drums">Drums</option>
-                <option value="sounds">Sounds</option>
-                <option value="audio_effects">Audio Effects</option>
-                <option value="midi_effects">MIDI Effects</option>
-              </select>
-            </div>
-            <div class="row" style="flex-wrap: wrap; gap: 8px; grid-column: span 2;">
-              <button type="button" id="kbRefreshStyles" class="secondary" data-busy-text="Loading...">Reload styles</button>
-              <button type="button" id="kbRebuildIndex" class="secondary" data-busy-text="Rebuilding...">Rebuild browser index</button>
-              <button type="button" id="kbRefreshAll" class="primary" data-busy-text="Refreshing...">Refresh styles + index</button>
-            </div>
-          </div>
-          <div id="knowledgeRefreshNote" class="kb-meta" style="white-space: pre-wrap;"></div>
         </div>
 
         <div class="card">
-          <h4>Style Creator</h4>
+          <h4>Add a style</h4>
           <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            Describe a new style (e.g. "Techno + Balkan") and generate a style definition you can save to the Knowledge Base.
+            Name it, pick a style to start from, and describe what makes it different. <strong>Generate with AI</strong> writes a full definition (needs an OpenAI key).
+            <strong>Copy base style</strong> copies the base as-is for you to tweak by hand. You can edit the draft before saving. Once saved, the style shows up in every style menu.
           </p>
 
           <div class="grid-3" style="margin-bottom: 16px;">
             <div>
-              <label class="control-label">Style Name</label>
+              <label class="control-label" for="newStyleName">Name</label>
               <input id="newStyleName" type="text" placeholder="e.g. Techno Balkan" />
+              <div id="newStyleKeyHint" class="kb-meta" style="margin-top: 4px;"></div>
             </div>
             <div>
-              <label class="control-label">Base Style A</label>
+              <label class="control-label" for="newStyleBaseA">Start from</label>
               <select id="newStyleBaseA"></select>
             </div>
             <div>
-              <label class="control-label">Base Style B (Optional)</label>
+              <label class="control-label" for="newStyleBaseB">Blend with (optional, AI only)</label>
               <select id="newStyleBaseB"></select>
             </div>
           </div>
 
           <div style="margin-bottom: 16px;">
-            <label class="control-label">Description</label>
+            <label class="control-label" for="newStyleDescription">Description (AI only)</label>
             <input id="newStyleDescription" type="text" placeholder="e.g. 145bpm, dark, hypnotic kick, balkan melody flavour, lots of percussion" />
           </div>
 
           <div class="row" style="margin-bottom: 12px;">
-            <button id="btnGenerateStyle" class="secondary" data-busy-text="Generating...">Generate Preview</button>
-            <button id="btnSaveGeneratedStyle" class="primary" data-busy-text="Saving..." disabled>Save Style</button>
+            <button id="btnGenerateStyle" class="primary" data-busy-text="Generating...">Generate with AI</button>
+            <button id="btnCopyBaseStyle" class="secondary">Copy base style</button>
             <div id="newStyleResult" style="margin-left: auto; font-size: 12px; color: var(--text-muted);"></div>
           </div>
 
-          <pre id="newStylePreview" style="max-height: 240px;"></pre>
+          <div id="newStyleDraft" style="display: none;">
+            <label class="control-label" for="newStylePreview">Draft (JSON, editable)</label>
+            <textarea id="newStylePreview" class="kb-textarea" style="min-height: 240px;" spellcheck="false"></textarea>
+            <div class="row" style="margin-top: 10px;">
+              <button id="btnSaveGeneratedStyle" class="primary" data-busy-text="Saving..." disabled>Save style</button>
+              <button id="btnDiscardGeneratedStyle" class="secondary">Discard draft</button>
+              <div id="newStyleDraftError" style="font-size: 12px; color: var(--danger);"></div>
+            </div>
+          </div>
         </div>
 
         <div class="card">
-          <h4>Style Definitions (styles.json)</h4>
+          <h4>Your styles</h4>
           <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            Edit the AI's understanding of musical styles. Changes take effect immediately after saving.
+            What the generators know about each style. Edit fields, then <strong>Save changes</strong>; generation uses the new values straight away. Clone and Delete save immediately.
           </p>
           <div class="kb-toolbar">
             <div class="left">
@@ -1464,9 +1371,10 @@
           <div id="kbStyles" class="kb-style-list"></div>
 
           <details style="margin-top: 14px;">
-            <summary style="cursor: pointer; color: var(--text-muted); font-weight: 600;">Raw JSON (advanced)</summary>
+            <summary style="cursor: pointer; color: var(--text-muted); font-weight: 600;">Raw JSON for the whole file (advanced)</summary>
             <div style="margin-top: 10px;">
-              <textarea id="knowledgeEditor" class="kb-textarea" style="min-height: 360px;"></textarea>
+              <textarea id="knowledgeEditor" class="kb-textarea" style="min-height: 360px;" spellcheck="false"></textarea>
+              <div id="knowledgeEditorError" class="kb-meta" style="color: var(--danger); margin-top: 6px;"></div>
             </div>
           </details>
         </div>
@@ -1474,9 +1382,9 @@
 
     </div>
 
-    <!-- Logic (Ported from volca_drum_v2.html) -->
     <script>
-      const API_BASE = "http://127.0.0.1:8005";
+      // Same server that served the page; the fallback covers opening the file directly.
+      const API_BASE = location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:8005";
       const logEl = document.getElementById("log");
 
       // --- Navigation Logic ---
@@ -1522,17 +1430,24 @@
         document.querySelectorAll(`.compose-tab[data-compose-tab="${String(tabName)}"]`).forEach(btn => btn.classList.add('active'));
       }
 
-      // ... rest of the code remains the same ...
-
       // --- Core Functions ---
       function log(msg) {
         logEl.textContent = `[${new Date().toLocaleTimeString()}] ${msg}\n` + logEl.textContent;
       }
 
+      // A 404 "Not Found" means the running server predates this feature (its code on disk is
+      // newer, but it hasn't been restarted), so say that instead of showing raw JSON.
+      function _httpErrorMessage(res, path, text) {
+        if (res.status === 404 && /"detail"\s*:\s*"Not Found"/.test(text || "")) {
+          return `the Pulse Studio server doesn't have ${path.split("?")[0]} yet. It's running older code: restart it (Ctrl+C in its terminal, then start it again)`;
+        }
+        return text;
+      }
+
       async function get(path) {
         const res = await fetch(`${API_BASE}${path}`, { method: "GET" });
         const text = await res.text();
-        if (!res.ok) throw new Error(text);
+        if (!res.ok) throw new Error(_httpErrorMessage(res, path, text));
         return text ? JSON.parse(text) : {};
       }
 
@@ -1543,7 +1458,7 @@
           body: body ? JSON.stringify(body) : "{}",
         });
         const text = await res.text();
-        if (!res.ok) throw new Error(text);
+        if (!res.ok) throw new Error(_httpErrorMessage(res, path, text));
         return text ? JSON.parse(text) : {};
       }
 
@@ -1553,15 +1468,12 @@
           body: formData,
         });
         const text = await res.text();
-        if (!res.ok) throw new Error(text);
+        if (!res.ok) throw new Error(_httpErrorMessage(res, path, text));
         return text ? JSON.parse(text) : {};
       }
 
-      // ... rest of the code remains the same ...
-
       // --- Performance Track Knobs ---
       let perfKnobDebounce = null;
-      let perfKnobsLoadedOnce = false;
 
       function setPerfKnobsStatus(text) {
         const el = document.getElementById('perfKnobsStatus');
@@ -1583,45 +1495,53 @@
         return s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
       }
 
-      function buildStyleOptions(keys) {
-        const items = (Array.isArray(keys) ? keys : []).map(k => String(k)).filter(Boolean);
-        items.sort((a, b) => a.localeCompare(b));
-        return items.map(k => `<option value="${escapeHtml(k)}">${escapeHtml(titleCaseKey(k))}</option>`).join("");
+      // Every style menu in the page is built from knowledge/styles.json, so a style added
+      // on the Styles view shows up everywhere without touching this file.
+      const STYLE_SELECT_IDS = ["commonStyle", "mcpAiStyle", "newStyleBaseA", "newStyleBaseB", "ttsPackStyle"];
+      const STYLE_PREF_KEY = "pulse.style";
+
+      function _loadPref(key) {
+        try { return localStorage.getItem(key) || ""; } catch (e) { return ""; }
+      }
+      function _savePref(key, value) {
+        try { localStorage.setItem(key, value); } catch (e) { /* storage unavailable */ }
       }
 
-      function applyStyleKeysToUI(styleKeys) {
-        const html = buildStyleOptions(styleKeys);
-        const ids = [
-          "commonStyle",
-          "mcpAiStyle",
-          "bassStyle",
-          "aiStyle",
-          "percStyle",
-          "stabsStyle",
-          "fxStyle",
-          "newStyleBaseA",
-          "newStyleBaseB",
-          "ttsPackStyle",
-        ];
+      function buildStyleOptions(styleMap) {
+        const keys = Object.keys(styleMap || {});
+        const named = keys.map(k => ({ key: k, name: _getStyleDisplayName(k, styleMap[k]) }));
+        named.sort((a, b) => a.name.localeCompare(b.name));
+        return named.map(({ key, name }) => `<option value="${escapeHtml(key)}">${escapeHtml(name)}</option>`).join("");
+      }
 
-        ids.forEach((id) => {
+      function applyStylesToUI(styleMap) {
+        const map = (styleMap && typeof styleMap === "object") ? styleMap : {};
+        const keys = Object.keys(map);
+        const html = keys.length ? buildStyleOptions(map) : `<option value="">No styles yet: add one on the Styles page</option>`;
+
+        STYLE_SELECT_IDS.forEach((id) => {
           const el = document.getElementById(id);
           if (!el) return;
-          const current = el.value;
+          const current = el.value || (id === "commonStyle" || id === "ttsPackStyle" ? _loadPref(STYLE_PREF_KEY) : "");
           el.innerHTML = html;
-          if (current && Array.isArray(styleKeys) && styleKeys.includes(current)) {
-            el.value = current;
-          }
+          if (id === "newStyleBaseB") el.insertAdjacentHTML("afterbegin", `<option value="">(none)</option>`);
+          if (current && keys.includes(current)) el.value = current;
+          else if (id === "newStyleBaseB") el.value = "";
         });
+        renderCommonStyleSummary();
+      }
 
-        const baseA = document.getElementById("newStyleBaseA");
-        if (baseA) {
-          baseA.insertAdjacentHTML("afterbegin", `<option value="">(none)</option>`);
-        }
-        const baseB = document.getElementById("newStyleBaseB");
-        if (baseB) {
-          baseB.insertAdjacentHTML("afterbegin", `<option value="">(none)</option>`);
-        }
+      function renderCommonStyleSummary() {
+        const el = document.getElementById("commonStyleSummary");
+        if (!el) return;
+        const key = document.getElementById("commonStyle")?.value || "";
+        const st = _knowledgeData && _knowledgeData.styles ? _knowledgeData.styles[key] : null;
+        if (!st) { el.textContent = ""; return; }
+        const bits = [];
+        if (st.tempo) bits.push(`${st.tempo} BPM`);
+        if (st.kit) bits.push(String(st.kit));
+        if (st.harmony_profile && st.harmony_profile.scale) bits.push(`${st.harmony_profile.scale} key`);
+        el.textContent = bits.join(" · ");
       }
 
       let _knowledgeData = null;
@@ -1636,7 +1556,7 @@
         _kbDirty = !!dirty;
         const btn = document.getElementById('saveKnowledge');
         if (btn) {
-          btn.textContent = _kbDirty ? 'Save Changes*' : 'Save Changes';
+          btn.textContent = _kbDirty ? 'Save changes *' : 'Save changes';
         }
       }
 
@@ -1703,6 +1623,8 @@
 
         const q = (document.getElementById('kbStyleFilter')?.value || '').trim().toLowerCase();
         const kitOptions = _buildKitOptions(data);
+        // Re-rendering replaces the cards, so remember which were open (editing one field shouldn't collapse it).
+        const openKeys = new Set(Array.from(container.querySelectorAll('details.kb-style[open]')).map(d => d.getAttribute('data-style-key')));
 
         let shown = 0;
         const html = keys.map((key) => {
@@ -1726,12 +1648,15 @@
 
           const progJson = JSON.stringify(hp.progressions || [], null, 2);
           const recJson = JSON.stringify(rec || {}, null, 2);
+          const grooveJson = JSON.stringify(st.groove || {}, null, 2);
+          const kitHasCurrent = kit && kitOptions.includes(`value="${escapeHtml(kit)}"`);
+          const kitSelectOptions = (kit && !kitHasCurrent ? `<option value="${escapeHtml(kit)}">${escapeHtml(kit)}</option>` : '') + kitOptions;
 
           const octaveMin = Array.isArray(bp.octave_range) ? bp.octave_range[0] : 2;
           const octaveMax = Array.isArray(bp.octave_range) ? bp.octave_range[1] : 3;
 
           return `
-            <details class="kb-style" data-style-key="${escapeHtml(key)}">
+            <details class="kb-style" data-style-key="${escapeHtml(key)}" ${openKeys.has(key) ? 'open' : ''}>
               <summary>
                 <div class="kb-style-title">
                   <div class="name">${escapeHtml(displayName || titleCaseKey(key))}</div>
@@ -1759,7 +1684,7 @@
                     <label class="control-label">Kit</label>
                     ${kitOptions ? (
                       `<select data-kb-field="kit" data-style-key="${escapeHtml(key)}">
-                        ${kitOptions}
+                        ${kitSelectOptions}
                       </select>`
                     ) : (
                       `<input type="text" data-kb-field="kit" data-style-key="${escapeHtml(key)}" value="${escapeHtml(kit)}" />`
@@ -1810,6 +1735,11 @@
                   <div class="full">
                     <label class="control-label">Harmony Progressions (JSON array)</label>
                     <textarea class="kb-textarea" data-kb-json="harmony_profile.progressions" data-style-key="${escapeHtml(key)}">${escapeHtml(progJson)}</textarea>
+                  </div>
+
+                  <div class="full">
+                    <label class="control-label">Groove (JSON: swing, drum anchors, accents)</label>
+                    <textarea class="kb-textarea" data-kb-json="groove" data-style-key="${escapeHtml(key)}">${escapeHtml(grooveJson)}</textarea>
                   </div>
 
                   <div class="full">
@@ -1867,9 +1797,9 @@
           _syncKnowledgeEditorFromData();
           setKbDirty(false);
 
-          const styles = _knowledgeData && typeof _knowledgeData === "object" ? _knowledgeData.styles : null;
-          const keys = styles && typeof styles === "object" ? Object.keys(styles) : [];
-          applyStyleKeysToUI(keys);
+          applyStylesToUI(_knowledgeData.styles);
+          renderNewStyleKeyHint();
+          await refreshVoicePacks();
         } catch (e) {
           log("Error loading knowledge: " + e.message);
         }
@@ -1973,31 +1903,30 @@
         return out;
       }
 
-      function _buildAutoplayStepsFromPlaylist(playlist, startSlotIndex) {
-        const nameToOffset = {
-          "intro": 0,
-          "build 1": 1,
-          "build 2": 2,
-          "peak": 3,
-          "main a": 1,
-          "main b": 2,
-          "break": 3,
-          "breakdown": 5,
-          "climax": 6,
-          "drop": 4,
-          "outro": 5,
-        };
+      // Scene name -> slot, taken from the last generated (or loaded) track, so the playlist
+      // follows whatever scene layout the server used for the style.
+      function _sceneSlotsByName() {
+        const scenes = _lastFullTrackResp && Array.isArray(_lastFullTrackResp.scenes) ? _lastFullTrackResp.scenes : [];
+        const map = {};
+        for (const sc of scenes) {
+          const name = String((sc && sc.name) || '').trim().toLowerCase();
+          if (name && !(name in map)) map[name] = int(sc.slot);
+        }
+        return map;
+      }
 
+      function _buildAutoplayStepsFromPlaylist(playlist) {
+        const slots = _sceneSlotsByName();
         const steps = [];
-        const pl = Array.isArray(playlist) ? playlist : [];
-        for (const st of pl) {
+        const unknown = [];
+        for (const st of (Array.isArray(playlist) ? playlist : [])) {
           if (!st || typeof st !== 'object') continue;
           const key = String(st.scene || '').trim().toLowerCase();
-          const off = nameToOffset[key];
-          if (off === undefined) continue;
+          if (!(key in slots)) { unknown.push(st.scene); continue; }
           const reps = Math.max(1, Math.min(256, int(st.repeats || 1)));
-          steps.push({ scene_index: int(startSlotIndex) + int(off), repeats: reps });
+          steps.push({ scene_index: slots[key], repeats: reps });
         }
+        if (unknown.length) log(`Auto-play skipped unknown scenes: ${unknown.join(", ")}`);
         return steps;
       }
 
@@ -2019,7 +1948,7 @@
           return `
             <div class="row" style="gap: 8px; align-items: center; margin-bottom: 8px;">
               <div style="min-width: 18px; color: var(--text-muted);">${i + 1}</div>
-              <input type="text" data-playlist-field="scene" data-playlist-index="${i}" value="${scene}" style="flex: 1;" />
+              <input type="text" list="trackSceneNames" data-playlist-field="scene" data-playlist-index="${i}" value="${scene}" style="flex: 1;" />
               <input type="number" min="1" max="256" data-playlist-field="repeats" data-playlist-index="${i}" value="${repeats}" style="width: 90px;" />
               <button type="button" class="secondary" data-playlist-action="up" data-playlist-index="${i}" style="padding: 6px 10px;">↑</button>
               <button type="button" class="secondary" data-playlist-action="down" data-playlist-index="${i}" style="padding: 6px 10px;">↓</button>
@@ -2028,10 +1957,14 @@
           `;
         }).join('');
 
+        const names = Object.keys(_sceneSlotsByName());
+        const options = (_lastFullTrackResp && Array.isArray(_lastFullTrackResp.scenes) ? _lastFullTrackResp.scenes : [])
+          .map(sc => `<option value="${escapeHtml(String(sc.name || ''))}"></option>`).join('');
         root.innerHTML = rows + `
+          <datalist id="trackSceneNames">${options}</datalist>
           <div class="row" style="gap: 10px; align-items: center; margin-top: 8px;">
-            <button type="button" class="secondary" id="trackPlaylistAdd">Add Step</button>
-            <div style="color: var(--text-muted); font-size: 12px;">Scene names must match the generated labels (Intro, Build 1, Drop...).</div>
+            <button type="button" class="secondary" id="trackPlaylistAdd">Add step</button>
+            <div style="color: var(--text-muted); font-size: 12px;">${names.length ? 'Pick from the generated scenes.' : 'Generate or load a track to get scene names.'}</div>
           </div>
         `;
       }
@@ -2058,6 +1991,75 @@
         }
         return rows;
       }
+
+      const ROLE_LABELS = { drums: "Drums", bass: "Bass", perc: "Perc", stabs: "Stabs", fx: "FX", chords: "Chords" };
+
+      // One line for the drum-bus processing some styles add after the kit (Drum Buss, or Saturator
+      // on editions without it). Nothing is shown when the style has none and there was none to remove.
+      function drumBusLine(db) {
+        if (!db || typeof db !== "object" || db.action === "none" || !db.action) return "";
+        const dev = db.device || "Drum bus";
+        const text = {
+          loaded: `${dev} loaded`,
+          updated: `${dev} updated`,
+          removed: `${db.removed || dev} removed (this style has no drum bus)`,
+          skipped: `skipped${db.reason ? ": " + db.reason : ""}`,
+          failed: `failed${db.error ? ": " + db.error : db.reason ? ": " + db.reason : ""}`,
+        }[db.action] || db.action;
+        const cls = db.action === "failed" ? "no" : db.action === "skipped" ? "" : "ok";
+        const params = db.params && typeof db.params === "object"
+          ? Object.entries(db.params).map(([k, v]) => `${k} ${typeof v === "number" ? Math.round(v * 100) / 100 : v}`).join(", ")
+          : "";
+        const unmatched = Array.isArray(db.unmatched_params) && db.unmatched_params.length
+          ? `<div style="color: var(--danger); font-size: 12px;">Live didn't recognise these settings, so they weren't applied: ${escapeHtml(db.unmatched_params.join(", "))}</div>`
+          : "";
+        const track = Number.isFinite(Number(db.track_index)) ? ` on track ${Number(db.track_index) + 1}` : "";
+        return `<div style="margin-top: 8px;"><span class="chip ${cls}">Drum bus</span> ${escapeHtml(text + track)}${params ? ` <span class="muted">(${escapeHtml(params)})</span>` : ""}${unmatched}</div>`;
+      }
+
+      // Table of what each Pulse track got: kept / loaded (with the AI's reason) / fallback / failed.
+      function renderInstrumentResults(el, results, drumBus) {
+        if (!Array.isArray(results) || !results.length) {
+          el.innerHTML = '<span class="muted">Instruments were not changed.</span>' + drumBusLine(drumBus);
+          return;
+        }
+        const badge = { kept: "kept", loaded: "loaded", fallback: "fallback", failed: "failed" };
+        el.innerHTML = `<table class="live-table"><thead><tr><th style="width: 70px;">Track</th><th style="width: 80px;">Role</th><th>Instrument</th><th>Why</th></tr></thead><tbody>${
+          results.map((r) => {
+            const action = r.action || (r.ok ? "loaded" : "failed");
+            const name = r.name || (r.detail && r.detail.choice && r.detail.choice.name) || (r.detail && r.detail.device) || "–";
+            const why = r.action === "kept"
+              ? (r.warning || "Already on the track (kept).")
+              : (r.reason || r.error || (r.detail && r.detail.reason) || "");
+            const cls = action === "failed" ? "no" : action === "kept" ? "" : "ok";
+            return `<tr><td class="muted">${Number(r.track_index) + 1}</td><td>${escapeHtml(ROLE_LABELS[r.role] || r.role || "")}</td>
+              <td>${escapeHtml(name)} <span class="chip ${cls}">${escapeHtml(badge[action] || action)}</span></td>
+              <td class="muted">${escapeHtml(why)}</td></tr>`;
+          }).join("")
+        }</tbody></table>` + drumBusLine(drumBus);
+      }
+
+      document.getElementById("trackRepick")?.addEventListener("click", async () => {
+        const btn = document.getElementById("trackRepick");
+        const el = document.getElementById("trackInstrumentDebug");
+        setBusy(btn, true);
+        try {
+          const style = (document.getElementById("commonStyle")?.value || "").trim();
+          const prompt = [
+            (document.getElementById("trackInstrumentPrompt")?.value || "").trim(),
+            (document.getElementById("commonPrompt")?.value || "").trim(),
+          ].filter(Boolean).join("\n\n");
+          const resp = await post("/instruments/palette", { style, prompt: prompt || null, replace: true });
+          if (!resp || resp.error) throw new Error(resp && resp.error ? resp.error : "palette_failed");
+          if (el) renderInstrumentResults(el, resp.results, resp.drum_bus);
+          log(`Instruments re-picked for ${style}`);
+        } catch (e) {
+          log("Re-pick instruments failed: " + e.message);
+          alert("Re-pick instruments failed: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
 
       function renderFullTrackOutput(resp) {
         const scenesEl = document.getElementById("trackScenes");
@@ -2093,18 +2095,15 @@
 
         renderTrackPlaylist(arr);
 
-        if (instEl) {
-          const dbg = resp && resp.instruments ? resp.instruments : null;
-          instEl.textContent = dbg ? JSON.stringify(dbg, null, 2) : "";
-        }
+        if (instEl) renderInstrumentResults(instEl, resp && resp.instruments ? resp.instruments.applied : null, resp && resp.instruments ? resp.instruments.drum_bus : null);
       }
 
       async function startFullTrackAutoplay(arrangement, startSlotIndex, barsPerScene, clipBars) {
         const playlist = _normalizeArrangement(arrangement);
         const bpm = parseFloat(document.getElementById("tempo")?.value || "140");
         const clipBarsInt = Math.max(1, Math.min(128, parseInt(clipBars || "8", 10) || 8));
-        const steps = _buildAutoplayStepsFromPlaylist(playlist, int(startSlotIndex));
-        if (!steps.length) throw new Error("empty_arrangement");
+        const steps = _buildAutoplayStepsFromPlaylist(playlist);
+        if (!steps.length) throw new Error("Nothing to play: generate or load a track first.");
 
         _trackAutoPlayStop = async () => {
           try {
@@ -2210,7 +2209,6 @@
           }
         }
 
-        perfKnobsLoadedOnce = true;
         setPerfKnobsStatus(`Loaded ${names.length} tracks`);
         applyTrackFilter();
       }
@@ -2265,28 +2263,73 @@
       });
 
       document.getElementById("saveKnowledge")?.addEventListener("click", async () => {
-        const editor = document.getElementById("knowledgeEditor");
-        if (!editor) return;
         try {
-          let json = null;
-          if (_knowledgeData && typeof _knowledgeData === 'object') {
-            json = _knowledgeData;
-          } else {
-            json = JSON.parse(editor.value || "{}");
-          }
-
-          const resp = await post("/knowledge/styles", json);
-          if (!resp || resp.ok === false) {
-            throw new Error((resp && resp.error) ? resp.error : "save_failed");
-          }
-          await loadKnowledge();
+          await _kbSaveCurrentKnowledge();
+          log("Styles saved");
         } catch (e) {
-          log("Error saving knowledge: " + e.message);
-          alert("Invalid JSON or save error: " + e.message);
+          log("Error saving styles: " + e.message);
+          alert("Could not save styles: " + e.message);
         }
       });
 
+      // The raw JSON editor is a second view of the same data: valid edits flow back into the style cards.
+      document.getElementById("knowledgeEditor")?.addEventListener("input", (ev) => {
+        const errEl = document.getElementById("knowledgeEditorError");
+        const parsed = _safeJsonParse(ev.target.value || "");
+        const valid = parsed.ok && parsed.value && typeof parsed.value === "object" && parsed.value.styles && typeof parsed.value.styles === "object";
+        if (errEl) errEl.textContent = valid ? "" : (parsed.ok ? 'Needs a top-level "styles" object.' : "Invalid JSON: " + parsed.error.message);
+        if (!valid) return;
+        _knowledgeData = parsed.value;
+        setKbDirty(true);
+        _renderKbStyles();
+        applyStylesToUI(_knowledgeData.styles);
+      });
+
+      window.addEventListener("beforeunload", (ev) => {
+        if (!_kbDirty) return;
+        ev.preventDefault();
+        ev.returnValue = "";
+      });
+
+      // --- Add a style ---
       let _generatedStylePayload = null;
+
+      function _styleKeyFromName() {
+        return _kbSlugifyKey(document.getElementById("newStyleName")?.value || "");
+      }
+
+      function renderNewStyleKeyHint() {
+        const el = document.getElementById("newStyleKeyHint");
+        if (!el) return;
+        const key = _styleKeyFromName();
+        const exists = !!(key && _knowledgeData && _knowledgeData.styles && _knowledgeData.styles[key]);
+        el.style.color = exists ? "var(--danger)" : "";
+        el.textContent = !key ? "" : exists ? `"${key}" already exists: pick another name.` : `Key: ${key}`;
+      }
+
+      function showStyleDraft(key, style, note) {
+        _generatedStylePayload = { key, style };
+        const draft = document.getElementById("newStyleDraft");
+        const previewEl = document.getElementById("newStylePreview");
+        const saveBtn = document.getElementById("btnSaveGeneratedStyle");
+        const errEl = document.getElementById("newStyleDraftError");
+        if (draft) draft.style.display = "block";
+        if (previewEl) previewEl.value = JSON.stringify(style, null, 2);
+        if (errEl) errEl.textContent = "";
+        if (saveBtn) saveBtn.disabled = false;
+        const resultEl = document.getElementById("newStyleResult");
+        if (resultEl) resultEl.textContent = note || "";
+      }
+
+      function hideStyleDraft() {
+        _generatedStylePayload = null;
+        const draft = document.getElementById("newStyleDraft");
+        if (draft) draft.style.display = "none";
+        const saveBtn = document.getElementById("btnSaveGeneratedStyle");
+        if (saveBtn) saveBtn.disabled = true;
+      }
+
+      document.getElementById("newStyleName")?.addEventListener("input", renderNewStyleKeyHint);
 
       document.getElementById("btnGenerateStyle")?.addEventListener("click", async () => {
         const btn = document.getElementById("btnGenerateStyle");
@@ -2295,18 +2338,16 @@
         const baseA = (document.getElementById("newStyleBaseA")?.value || "").trim();
         const baseB = (document.getElementById("newStyleBaseB")?.value || "").trim();
         const resultEl = document.getElementById("newStyleResult");
-        const previewEl = document.getElementById("newStylePreview");
-        const saveBtn = document.getElementById("btnSaveGeneratedStyle");
 
-        _generatedStylePayload = null;
-        if (saveBtn) saveBtn.disabled = true;
-
+        hideStyleDraft();
         if (!name) {
-          if (resultEl) resultEl.textContent = "Enter a style name.";
+          if (resultEl) resultEl.textContent = "Enter a name first.";
+          document.getElementById("newStyleName")?.focus();
           return;
         }
 
         setBusy(btn, true);
+        if (resultEl) resultEl.textContent = "Generating…";
         try {
           const resp = await post("/knowledge/styles/generate", {
             name,
@@ -2316,66 +2357,91 @@
           });
           if (!resp || !resp.ok) {
             const err = (resp && resp.error) ? String(resp.error) : "generate_failed";
-            let extra = "";
-            if (resp && resp.detail && typeof resp.detail === "object") {
-              try {
-                extra = " — " + JSON.stringify(resp.detail);
-              } catch (e) {
-                extra = " — (detail not serializable)";
-              }
-            }
-            if (resultEl) resultEl.textContent = err + extra;
-            if (previewEl) {
-              const raw = resp && resp.raw;
-              previewEl.textContent = raw && typeof raw === "object" ? JSON.stringify(raw, null, 2) : "";
-            }
-            log("Style generate failed: " + err + extra);
+            if (resultEl) resultEl.textContent = `Generation failed (${err}). Try again, or use Copy base style.`;
+            log("Style generate failed: " + err + (resp && resp.detail ? " — " + JSON.stringify(resp.detail) : ""));
             return;
           }
-          _generatedStylePayload = { key: resp.key, style: resp.style };
-          if (previewEl) previewEl.textContent = JSON.stringify(resp.style, null, 2);
-          if (resultEl) {
-            const src = resp.source ? String(resp.source) : "?";
-            resultEl.textContent = `OK (${src}) · key: ${resp.key}`;
-          }
-          if (saveBtn) saveBtn.disabled = false;
+          const src = resp.source ? String(resp.source) : "";
+          const note = src && src !== "ai"
+            ? `Draft ready (${src}: the AI wasn't used, so this is a blend of the base styles). Review, then save.`
+            : "Draft ready. Review, then save.";
+          showStyleDraft(resp.key, resp.style, note);
         } catch (e) {
           log("Style generate error: " + e.message);
-          if (resultEl) resultEl.textContent = e.message;
+          if (resultEl) resultEl.textContent = "Error: " + e.message;
         } finally {
           setBusy(btn, false);
         }
       });
 
+      document.getElementById("btnCopyBaseStyle")?.addEventListener("click", () => {
+        const resultEl = document.getElementById("newStyleResult");
+        const key = _styleKeyFromName();
+        const baseA = (document.getElementById("newStyleBaseA")?.value || "").trim();
+        const styles = (_knowledgeData && _knowledgeData.styles) || {};
+        if (!key) {
+          if (resultEl) resultEl.textContent = "Enter a name first.";
+          document.getElementById("newStyleName")?.focus();
+          return;
+        }
+        if (!styles[baseA]) {
+          if (resultEl) resultEl.textContent = "Pick a style to start from.";
+          return;
+        }
+        const copy = JSON.parse(JSON.stringify(styles[baseA]));
+        copy.display_name = (document.getElementById("newStyleName")?.value || "").trim();
+        copy.clip_slot = _kbNextClipSlot(styles);
+        showStyleDraft(key, copy, `Copied from ${_getStyleDisplayName(baseA, styles[baseA])}. Edit the draft, then save.`);
+      });
+
+      document.getElementById("btnDiscardGeneratedStyle")?.addEventListener("click", () => {
+        hideStyleDraft();
+        const resultEl = document.getElementById("newStyleResult");
+        if (resultEl) resultEl.textContent = "";
+      });
+
       document.getElementById("btnSaveGeneratedStyle")?.addEventListener("click", async () => {
         const btn = document.getElementById("btnSaveGeneratedStyle");
         const resultEl = document.getElementById("newStyleResult");
-        if (!_generatedStylePayload || !_generatedStylePayload.key || !_generatedStylePayload.style) {
-          if (resultEl) resultEl.textContent = "Generate a preview first.";
+        const errEl = document.getElementById("newStyleDraftError");
+        if (!_generatedStylePayload) return;
+
+        const parsed = _safeJsonParse(document.getElementById("newStylePreview")?.value || "");
+        if (!parsed.ok || !parsed.value || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+          if (errEl) errEl.textContent = parsed.ok ? "The draft must be a JSON object." : "Invalid JSON: " + parsed.error.message;
           return;
         }
+        if (_kbDirty && !confirm("You have unsaved edits to other styles. Saving the new style reloads the list and discards them. Continue?")) return;
 
         setBusy(btn, true);
-        let savedOk = false;
         try {
-          const resp = await post("/knowledge/styles/add", {
-            key: _generatedStylePayload.key,
-            style: _generatedStylePayload.style,
-          });
+          const resp = await post("/knowledge/styles/add", { key: _generatedStylePayload.key, style: parsed.value });
           if (!resp || !resp.ok) {
-            throw new Error((resp && resp.error) ? String(resp.error) : "save_failed");
+            const err = (resp && resp.error) ? String(resp.error) : "save_failed";
+            throw new Error(err === "style_exists" ? `A style called "${resp.key}" already exists. Rename it.` : err);
           }
-          savedOk = true;
-          _generatedStylePayload = null;
-          if (resultEl) resultEl.textContent = `Saved style '${resp.key}'.`;
+          hideStyleDraft();
+          ["newStyleName", "newStyleDescription"].forEach((id) => { const el = document.getElementById(id); if (el) el.value = ""; });
           await loadKnowledge();
+          const common = document.getElementById("commonStyle");
+          if (common) {
+            common.value = resp.key;
+            _savePref(STYLE_PREF_KEY, resp.key);
+            renderCommonStyleSummary();
+          }
+          if (resultEl) resultEl.textContent = `Saved "${resp.key}". It's now selected on Compose.`;
+          log(`Style added: ${resp.key}`);
         } catch (e) {
+          if (errEl) errEl.textContent = e.message;
           log("Style save failed: " + e.message);
-          alert("Could not save style: " + e.message);
         } finally {
           setBusy(btn, false);
-          if (savedOk && btn) btn.disabled = true;
         }
+      });
+
+      document.getElementById("commonStyle")?.addEventListener("change", (ev) => {
+        _savePref(STYLE_PREF_KEY, ev.target.value);
+        renderCommonStyleSummary();
       });
 
       document.getElementById('kbStyleFilter')?.addEventListener('input', () => {
@@ -2433,6 +2499,7 @@
         if (!(t instanceof HTMLElement)) return;
         const action = t.getAttribute('data-kb-action');
         if (!action) return;
+        ev.preventDefault();  // the buttons sit inside <summary>; don't toggle the card
         const styleKey = t.getAttribute('data-style-key');
         if (!styleKey) return;
 
@@ -2448,7 +2515,7 @@
           setKbDirty(true);
           _syncKnowledgeEditorFromData();
           _renderKbStyles();
-          await _kbSaveCurrentKnowledge();
+          await _kbSaveCurrentKnowledge().catch((e) => alert("Could not save styles: " + e.message));
           return;
         }
 
@@ -2472,7 +2539,7 @@
           setKbDirty(true);
           _syncKnowledgeEditorFromData();
           _renderKbStyles();
-          await _kbSaveCurrentKnowledge();
+          await _kbSaveCurrentKnowledge().catch((e) => alert("Could not save styles: " + e.message));
           return;
         }
       });
@@ -2522,6 +2589,8 @@
         _knowledgeData.styles[styleKey] = styleObj;
 
         const parsed = _safeJsonParse(t.value || '');
+        t.style.borderColor = parsed.ok ? '' : 'var(--danger)';
+        t.title = parsed.ok ? '' : 'Invalid JSON: this field will not be saved until it parses.';
         if (!parsed.ok) return;
         _setDeep(styleObj, jsonField, parsed.value);
         setKbDirty(true);
@@ -2552,7 +2621,7 @@
           const clip_bars = int(document.getElementById("trackClipBars")?.value || 8);
 
           const apply_instruments = !!document.getElementById("trackApplyInstruments")?.checked;
-          const instrument_candidate_limit = int(document.getElementById("trackInstrumentLimit")?.value || 120);
+          const replace_instruments = !!document.getElementById("trackReplaceInstruments")?.checked;
           const instrument_prompt_raw = (document.getElementById("trackInstrumentPrompt")?.value || "").trim();
 
           const combinedPrompt = [instrument_prompt_raw, prompt].filter(Boolean).join("\n\n");
@@ -2567,7 +2636,7 @@
             bars_per_scene,
             clip_bars,
             apply_instruments,
-            instrument_candidate_limit,
+            replace_instruments,
             instrument_prompt: combinedPrompt || null,
             prompt: prompt || null,
           });
@@ -2577,7 +2646,6 @@
           }
 
           _lastFullTrackResp = resp;
-
           renderFullTrackOutput(resp);
 
           if (document.getElementById("trackAutoPlayAfter")?.checked) {
@@ -2676,8 +2744,6 @@
             suggested_arrangement: Array.isArray(exportObj.suggested_arrangement) ? exportObj.suggested_arrangement : [],
             instruments: null,
           };
-          renderFullTrackOutput(renderResp);
-
           _lastFullTrackResp = {
             ok: true,
             style: exportObj.style || null,
@@ -2687,6 +2753,7 @@
             scenes: renderResp.scenes,
             suggested_arrangement: renderResp.suggested_arrangement,
           };
+          renderFullTrackOutput(renderResp);
         } catch (e) {
           log('Track load failed: ' + e.message);
           alert('Track load failed: ' + e.message);
@@ -2727,7 +2794,8 @@
 
         const arr = readTrackPlaylist();
         if (t.id === 'trackPlaylistAdd') {
-          arr.push({ scene: 'Intro', repeats: 1 });
+          const first = (_lastFullTrackResp && _lastFullTrackResp.scenes && _lastFullTrackResp.scenes[0]) ? _lastFullTrackResp.scenes[0].name : 'Intro';
+          arr.push({ scene: first || 'Intro', repeats: 1 });
           renderTrackPlaylist(arr);
           return;
         }
@@ -2905,19 +2973,196 @@
         }
       });
 
+      // =============================================
+      // TRACK PICKERS
+      // Tracks are chosen by name from Live's snapshot and remembered by name, because indices
+      // shift whenever a track is added or moved. Without PulseBridge there's no track list,
+      // so a 1-based track number box is shown instead.
+      // =============================================
+      const TRACK_PICKERS = {
+        voiceMidi: { select: "ttsMidiTrack", fallback: "ttsMidiTrackIndex", hint: "ttsMidiTrackHint", pref: "pulse.voiceMidiTrack", midiOnly: true },
+        vox: { select: "voxTrack", fallback: "voxTrackIndex", hint: "voxTrackHint", pref: "pulse.voxTrack", preferName: "PS-VOX" },
+      };
+      let _pickerTracks = [];
+      let _pickerSignature = null;
+
+      function _trackLabel(t) {
+        const devs = (t.devices || []).join(", ");
+        const what = t.is_midi === false ? "audio" : (devs || "no instrument");
+        return `${t.index + 1}. ${t.name} (${what})`;
+      }
+
+      function _defaultPickerTrack(cfg, tracks) {
+        const byName = (n) => n && tracks.find(t => t.name === n);
+        if (cfg.midiOnly) {
+          return byName(_loadPref(cfg.pref)) || tracks.find(t => t.is_midi !== false && (t.devices || []).length) || tracks.find(t => t.is_midi !== false);
+        }
+        return byName(_loadPref(cfg.pref)) || byName(cfg.preferName) || tracks[0];
+      }
+
+      function _renderPickerHint(key) {
+        const cfg = TRACK_PICKERS[key];
+        const el = document.getElementById(cfg.hint);
+        if (!el) return;
+        const t = pickedTrack(key);
+        let msg = "";
+        let warn = false;
+        if (!_pickerTracks.length) {
+          msg = "Live isn't connected through PulseBridge, so enter the track number as shown in Live (1 = first track).";
+        } else if (cfg.midiOnly && !t) {
+          msg = "This set has no MIDI tracks. Add one with a synth or Drum Rack in Live.";
+          warn = true;
+        } else if (cfg.midiOnly && !(t.devices || []).length) {
+          msg = "This track has no instrument, so the clip would be silent. Load a synth or Drum Rack on it in Live.";
+          warn = true;
+        } else if (key === "vox" && !_pickerTracks.some(x => x.name === cfg.preferName)) {
+          msg = "There's no PS-VOX track yet. Compose → Voice → Send to Live creates it.";
+        }
+        el.textContent = msg;
+        el.style.color = warn ? "var(--danger)" : "";
+      }
+
+      function renderTrackPickers() {
+        const connected = _pickerTracks.length > 0;
+        for (const [key, cfg] of Object.entries(TRACK_PICKERS)) {
+          const sel = document.getElementById(cfg.select);
+          const fallback = document.getElementById(cfg.fallback);
+          if (!sel || !fallback) continue;
+          sel.style.display = connected ? "" : "none";
+          fallback.style.display = connected ? "none" : "";
+          if (connected) {
+            const keepName = sel.dataset.trackName || "";
+            sel.innerHTML = _pickerTracks.map(t => {
+              const off = cfg.midiOnly && t.is_midi === false;
+              return `<option value="${t.index}" ${off ? "disabled" : ""}>${escapeHtml(_trackLabel(t))}</option>`;
+            }).join("");
+            const pick = _pickerTracks.find(t => t.name === keepName && !(cfg.midiOnly && t.is_midi === false)) || _defaultPickerTrack(cfg, _pickerTracks);
+            if (pick) {
+              sel.value = String(pick.index);
+              sel.dataset.trackName = pick.name;
+            }
+          }
+          _renderPickerHint(key);
+        }
+      }
+
+      // Called by the live-state script whenever the track list may have changed.
+      function setPickerTracks(tracks) {
+        const list = Array.isArray(tracks) ? tracks : [];
+        const sig = JSON.stringify(list.map(t => [t.name, t.is_midi, t.devices]));
+        if (sig === _pickerSignature) return;
+        _pickerSignature = sig;
+        _pickerTracks = list;
+        renderTrackPickers();
+      }
+      window.setPickerTracks = setPickerTracks;
+
+      function pickedTrack(key) {
+        const sel = document.getElementById(TRACK_PICKERS[key].select);
+        if (!_pickerTracks.length || !sel || sel.value === "") return null;
+        return _pickerTracks.find(t => String(t.index) === sel.value) || null;
+      }
+
+      // 0-based index for the API, or null when nothing usable is chosen.
+      function pickedTrackIndex(key) {
+        const cfg = TRACK_PICKERS[key];
+        if (_pickerTracks.length) {
+          const t = pickedTrack(key);
+          return t ? t.index : null;
+        }
+        const n = parseInt(document.getElementById(cfg.fallback)?.value || "", 10);
+        return Number.isFinite(n) && n >= 1 ? n - 1 : null;
+      }
+
+      for (const [key, cfg] of Object.entries(TRACK_PICKERS)) {
+        document.getElementById(cfg.select)?.addEventListener("change", (ev) => {
+          const t = pickedTrack(key);
+          if (t) {
+            ev.target.dataset.trackName = t.name;
+            _savePref(cfg.pref, t.name);
+          }
+          _renderPickerHint(key);
+        });
+      }
+      renderTrackPickers();
+
+      function midiNoteName(n) {
+        const names = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+        return `${names[((n % 12) + 12) % 12]}${Math.floor(n / 12) - 2}`;  // Live's naming: 60 = C3
+      }
+
       document.getElementById("btnTtsToMidi")?.addEventListener("click", async () => {
         const btn = document.getElementById("btnTtsToMidi");
+        const statusEl = document.getElementById("ttsMidiStatus");
+        const say = (msg) => { if (statusEl) statusEl.textContent = msg; };
+        if (!_ttsLastUrl) { say("Generate a voice first."); return; }
+        const track_index = pickedTrackIndex("voiceMidi");
+        if (track_index === null) { say("Pick a MIDI track with an instrument first."); return; }
+        const t = pickedTrack("voiceMidi");
+
         setBusy(btn, true);
         try {
-          if (!_ttsLastUrl) throw new Error("no_source");
-          const track_index = parseInt(document.getElementById("ttsMidiTrackIndex")?.value || "7", 10);
-          const clip_slot_index = parseInt(document.getElementById("ttsMidiSlotIndex")?.value || "0", 10);
-          const bpm = parseFloat(document.getElementById("tempo")?.value || "140");
-          const resp = await post("/voice_to_midi/apply", { source_url: _ttsLastUrl, track_index, clip_slot_index, bpm, bars: 1, fire: true });
-          if (!resp || !resp.ok) throw new Error((resp && resp.error) ? resp.error : "voice_to_midi_failed");
-          setTtsStatus("MIDI created");
+          say("Writing MIDI clip…");
+          // The server checks the track (MIDI, with an instrument) before writing. Slot and note
+          // left out mean: next empty slot, and the lowest filled Drum Rack pad or C3 on a synth.
+          const body = {
+            source_url: _ttsLastUrl,
+            track_index,
+            bpm: parseFloat(document.getElementById("tempo")?.value || "140"),
+            bars: 1,
+            fire: true,
+          };
+          const slotRaw = (document.getElementById("ttsMidiSlotIndex")?.value || "").trim();
+          if (slotRaw !== "") body.clip_slot_index = parseInt(slotRaw, 10);
+          const note = document.getElementById("ttsMidiNote")?.value || "";
+          if (note !== "") body.base_pitch = parseInt(note, 10);
+
+          const resp = await post("/voice_to_midi/apply", body);
+          if (!resp || !resp.ok) {
+            throw new Error((resp && (resp.hint || resp.detail || resp.error)) || "voice_to_midi_failed");
+          }
+          const name = resp.track_name || (t && t.name) || `track ${track_index + 1}`;
+          const slot = typeof resp.clip_slot_index === "number" ? resp.clip_slot_index : (body.clip_slot_index ?? 0);
+          const pitch = typeof resp.base_pitch === "number" ? resp.base_pitch : body.base_pitch;
+          let msg = `MIDI clip on ${name}` + (resp.instrument ? ` (${resp.instrument})` : "") + `, slot ${slot}` + (typeof pitch === "number" ? `, note ${midiNoteName(pitch)}` : "") + ".";
+          if (resp.notes === 0) msg += " No onsets found in the voice, so the clip is empty.";
+          if (Array.isArray(resp.warnings) && resp.warnings.length) msg += ` (${resp.warnings.join(" ")})`;
+          say(msg);
+          log("Voice → MIDI: " + msg);
         } catch (e) {
+          say("Couldn't create MIDI: " + e.message);
           log("Voice→MIDI failed: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("btnTtsSendToLive")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnTtsSendToLive");
+        const statusEl = document.getElementById("ttsSendStatus");
+        if (!_ttsLastUrl) { statusEl.textContent = "Generate a voice first."; return; }
+        const slotRaw = (document.getElementById("ttsSendSlotIndex")?.value || "").trim();
+        const body = { source_url: _ttsLastUrl, fire: !!document.getElementById("ttsSendFire")?.checked };
+        if (slotRaw !== "") body.clip_slot_index = parseInt(slotRaw, 10);
+        statusEl.textContent = "Sending to Live…";
+        setBusy(btn, true);
+        try {
+          const resp = await post("/voice/send_to_live", body);
+          if (!resp || !resp.ok) {
+            const hint = resp && resp.hint ? ` ${resp.hint}` : "";
+            const file = resp && resp.file_path ? ` File: ${resp.file_path}` : "";
+            statusEl.textContent = `Couldn't send: ${(resp && (resp.detail || resp.error)) || "unknown error"}.${hint}${file}`;
+            return;
+          }
+          const where = `track ${resp.track_index + 1}, slot ${resp.clip_slot_index + 1}` + (resp.method === "simpler" ? " (Simpler)" : "");
+          const v = resp.verified;
+          let msg = `Sent to ${where}.`;
+          if (v) msg += v.playing ? " Playing ✓" : ` Not heard: ${(v.reasons || []).join("; ")}`;
+          if (resp.warnings && resp.warnings.length) msg += ` (${resp.warnings.join(" ")})`;
+          statusEl.textContent = msg;
+          log("Voice → Live: " + msg);
+        } catch (e) {
+          statusEl.textContent = "Send failed: " + e.message;
         } finally {
           setBusy(btn, false);
         }
@@ -2945,26 +3190,6 @@
       // =============================================
       // SINGLE SCENE GENERATOR (Pair Generator)
       // =============================================
-      let _lastPairExport = null;
-
-      // Link drum slot to bass slot when checkbox is checked
-      document.getElementById("pairDrumSlot")?.addEventListener("input", () => {
-        const v = int(document.getElementById("pairDrumSlot")?.value || 0);
-        const mirror = document.getElementById("pairDrumSlotMirror");
-        if (mirror) mirror.value = v;
-        if (document.getElementById("pairLinkSlots")?.checked) {
-          const bass = document.getElementById("pairBassSlot");
-          if (bass) bass.value = v;
-        }
-      });
-
-      document.getElementById("pairLinkSlots")?.addEventListener("change", () => {
-        if (document.getElementById("pairLinkSlots")?.checked) {
-          const v = int(document.getElementById("pairDrumSlot")?.value || 0);
-          const bass = document.getElementById("pairBassSlot");
-          if (bass) bass.value = v;
-        }
-      });
 
       // Find next free slot
       document.getElementById("pairFindNextSlot")?.addEventListener("click", async () => {
@@ -2974,10 +3199,7 @@
           const resp = await get("/clips/find_free_slot?track_index=0&start_slot=0");
           if (resp && typeof resp.slot === "number") {
             document.getElementById("pairDrumSlot").value = resp.slot;
-            document.getElementById("pairDrumSlotMirror").value = resp.slot;
-            if (document.getElementById("pairLinkSlots")?.checked) {
-              document.getElementById("pairBassSlot").value = resp.slot;
-            }
+            setPairCommentary(`Slot ${resp.slot} is empty on the drum track.`);
           }
         } catch (e) {
           log("Find free slot failed: " + e.message);
@@ -2991,7 +3213,7 @@
         const prompt = (document.getElementById("commonPrompt")?.value || "").trim();
         const bars = int(document.getElementById("pairBars")?.value || 1);
         const drumSlot = int(document.getElementById("pairDrumSlot")?.value || 0);
-        const bassSlot = int(document.getElementById("pairBassSlot")?.value || 0);
+        const bassSlot = drumSlot;
         return {
           style,
           bars,
@@ -3016,6 +3238,11 @@
         };
       }
 
+      function _pairLayersSummary(payload) {
+        const names = ["drums", "bass", "perc", "stabs", "fx"].filter(k => payload[`include_${k}`]).map(k => ROLE_LABELS[k] || k);
+        return names.join(", ") || "no layers";
+      }
+
       function setPairCommentary(text) {
         const el = document.getElementById("pairCommentary");
         if (el) el.textContent = String(text || "");
@@ -3033,17 +3260,11 @@
           if (!resp || resp.ok === false) {
             throw new Error((resp && resp.error) ? resp.error : "pair_generate_failed");
           }
-          _lastPairExport = resp;
-          setPairCommentary("Generated! Clips written to Ableton.");
+          setPairCommentary(`Clips written to scene slot ${payload.drum_clip_slot_index}: ${_pairLayersSummary(payload)}.`);
           try {
             await refreshSequencersFromCache(payload.drum_clip_slot_index);
           } catch (e) {
             log("Sequencer refresh failed: " + e.message);
-          }
-          const pre = document.getElementById("pairApplied");
-          if (pre) {
-            pre.style.display = "block";
-            pre.textContent = JSON.stringify(resp, null, 2);
           }
         } catch (e) {
           setPairCommentary("Error: " + e.message);
@@ -3065,7 +3286,6 @@
           if (!resp || resp.ok === false) {
             throw new Error((resp && resp.error) ? resp.error : "pair_generate_failed");
           }
-          _lastPairExport = resp;
           setPairCommentary("Generated! Launching scene...");
           try {
             await refreshSequencersFromCache(payload.drum_clip_slot_index);
@@ -3076,53 +3296,13 @@
           const sceneIndex = payload.drum_clip_slot_index;
           await post("/scenes/fire", { scene_index: sceneIndex });
           await post("/transport/play", {});
-          setPairCommentary("Playing scene " + sceneIndex);
+          setPairCommentary(`Playing scene slot ${sceneIndex}: ${_pairLayersSummary(payload)}.`);
         } catch (e) {
           setPairCommentary("Error: " + e.message);
           log("Pair generate & launch failed: " + e.message);
         } finally {
           setBusy(btn, false);
         }
-      });
-
-      // Save JSON
-      document.getElementById("pairSave")?.addEventListener("click", () => {
-        if (!_lastPairExport) {
-          alert("No generated data to save. Generate first.");
-          return;
-        }
-        const blob = new Blob([JSON.stringify(_lastPairExport, null, 2)], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = "pair_export.json";
-        a.click();
-        URL.revokeObjectURL(url);
-      });
-
-      // Load JSON
-      document.getElementById("pairLoad")?.addEventListener("click", () => {
-        document.getElementById("pairLoadFile")?.click();
-      });
-
-      document.getElementById("pairLoadFile")?.addEventListener("change", async (e) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        try {
-          const text = await file.text();
-          const json = JSON.parse(text);
-          _lastPairExport = json;
-          const pre = document.getElementById("pairApplied");
-          if (pre) {
-            pre.style.display = "block";
-            pre.textContent = JSON.stringify(json, null, 2);
-          }
-          setPairCommentary("Loaded from file. Use Apply to write to Ableton.");
-        } catch (err) {
-          log("Load JSON failed: " + err.message);
-          alert("Invalid JSON file");
-        }
-        e.target.value = "";
       });
 
       // =============================================
@@ -3142,40 +3322,45 @@
       document.querySelectorAll(".vox-pad").forEach(btn => {
         btn.addEventListener("click", async () => {
           const pad = parseInt(btn.dataset.pad || "1", 10) - 1;
-          const trackIndex = int(document.getElementById("voxTrackIndex")?.value || 6);
+          const status = document.getElementById("voxStatus");
+          const trackIndex = pickedTrackIndex("vox");
+          if (trackIndex === null) {
+            if (status) status.textContent = "Pick the vox track first.";
+            return;
+          }
           const baseSlot = int(document.getElementById("voxBaseSlot")?.value || 0);
           const slot = baseSlot + pad;
+          const t = pickedTrack("vox");
           try {
             await post("/clips/fire", { track_index: trackIndex, clip_slot_index: slot });
-            const status = document.getElementById("voxStatus");
-            if (status) status.textContent = `Fired pad ${pad + 1} (slot ${slot})`;
+            if (status) status.textContent = `Fired pad ${pad + 1}: ${t ? t.name : `track ${trackIndex + 1}`}, slot ${slot}`;
           } catch (e) {
+            if (status) status.textContent = "Fire failed: " + e.message;
             log("Vox pad fire failed: " + e.message);
           }
         });
       });
 
-      document.getElementById("voxStopAll")?.addEventListener("click", async () => {
-        const trackIndex = int(document.getElementById("voxTrackIndex")?.value || 6);
-        try {
-          await post("/clips/stop_track", { track_index: trackIndex });
-          const status = document.getElementById("voxStatus");
-          if (status) status.textContent = "Stopped";
-        } catch (e) {
-          log("Vox stop failed: " + e.message);
-        }
-      });
+      // Scene buttons: one per scene in the Live set (the live-state script calls renderSceneButtons
+      // when the scene count changes); 8 until Live reports its count.
+      function renderSceneButtons(count) {
+        const box = document.getElementById("sceneButtons");
+        if (!box) return;
+        const n = Math.max(1, Math.min(32, int(count) || 8));
+        if (box.childElementCount === n) return;
+        box.innerHTML = Array.from({ length: n }, (_, i) => `<button class="scene-btn secondary" data-scene="${i}">Scene ${i + 1}</button>`).join("");
+      }
+      window.renderSceneButtons = renderSceneButtons;
+      renderSceneButtons(8);
 
-      // Scene Master buttons
-      document.querySelectorAll(".scene-btn").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const sceneIndex = parseInt(btn.dataset.scene || "0", 10);
-          try {
-            await post("/scenes/fire", { scene_index: sceneIndex });
-          } catch (e) {
-            log("Scene fire failed: " + e.message);
-          }
-        });
+      document.getElementById("sceneButtons")?.addEventListener("click", async (ev) => {
+        const btn = ev.target instanceof HTMLElement ? ev.target.closest(".scene-btn") : null;
+        if (!btn) return;
+        try {
+          await post("/scenes/fire", { scene_index: int(btn.dataset.scene) });
+        } catch (e) {
+          log("Scene fire failed: " + e.message);
+        }
       });
 
       // Transitions
@@ -3183,7 +3368,7 @@
         const btn = document.getElementById("btnFadeOut");
         setBusy(btn, true);
         try {
-          await post("/transitions/fade_out", { duration_seconds: 4 });
+          await post("/transport/fade_out", { duration_ms: 4000 });
         } catch (e) {
           log("Fade out failed: " + e.message);
         } finally {
@@ -3195,7 +3380,7 @@
         const btn = document.getElementById("btnWashDrop");
         setBusy(btn, true);
         try {
-          await post("/transitions/wash_drop", { bars: 4 });
+          await post("/transport/wash_drop", { duration_bars: 4 });
         } catch (e) {
           log("Wash & Drop failed: " + e.message);
         } finally {
@@ -3203,24 +3388,11 @@
         }
       });
 
-      // Style Pads (Performance)
-      document.querySelectorAll("#performanceStylePads .style").forEach(btn => {
-        btn.addEventListener("click", async () => {
-          const style = btn.dataset.style || "techno";
-          const styleToSlot = { techno: 0, house: 1, dnb: 2, breakbeat: 3, garage: 4, tribal: 5 };
-          const slot = styleToSlot[style] ?? 0;
-          try {
-            await post("/clips/fire", { track_index: 0, clip_slot_index: slot });
-          } catch (e) {
-            log("Style pad fire failed: " + e.message);
-          }
-        });
-      });
-
       // Recorder
       let _recMediaRecorder = null;
       let _recChunks = [];
       let _recBlob = null;
+      let _recUrl = "";
 
       document.getElementById("recStart")?.addEventListener("click", async () => {
         try {
@@ -3266,6 +3438,7 @@
           formData.append("label", label);
           const resp = await fetch(`${API_BASE}/audio/upload`, { method: "POST", body: formData }).then(r => r.json());
           if (!resp || !resp.ok) throw new Error((resp && resp.error) ? resp.error : "upload_failed");
+          _recUrl = String(resp.url || "");
           document.getElementById("recSaved").textContent = resp.filename || "Uploaded";
           document.getElementById("recProcess").disabled = false;
           document.getElementById("recStatus").textContent = "Uploaded: " + (resp.filename || "");
@@ -3282,8 +3455,8 @@
         try {
           const fx = (document.getElementById("recFx")?.value || "clean").trim();
           const saved = document.getElementById("recSaved")?.textContent || "";
-          if (!saved) throw new Error("no_file");
-          const resp = await post("/audio/process", { source_url: `/audio/${saved}`, fx, label: saved.replace(/\.[^.]+$/, "") });
+          if (!_recUrl) throw new Error("no_file");
+          const resp = await post("/audio/process", { source_url: _recUrl, fx, label: saved.replace(/\.[^.]+$/, "") });
           if (!resp || !resp.ok) throw new Error((resp && resp.error) ? resp.error : "process_failed");
           document.getElementById("recStatus").textContent = "Processed: " + (resp.filename || "");
         } catch (e) {
@@ -3296,6 +3469,8 @@
       // Keyboard shortcuts for Vox Pads (1-8)
       document.addEventListener("keydown", (e) => {
         if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT") return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        if (!document.getElementById("view-performance")?.classList.contains("active")) return;
         const key = e.key;
         if (key >= "1" && key <= "8") {
           const pad = parseInt(key, 10);
@@ -3313,12 +3488,8 @@
       renderStatus(null);
       loadKnowledge();
 
-      refreshVoicePacks();
       refreshTtsRecipes();
 
-      if (!perfKnobsLoadedOnce) {
-        loadPerformanceKnobs();
-      }
 
       function _clearEl(id) {
         const el = document.getElementById(id);
@@ -3422,25 +3593,6 @@
         _renderLaneGrid(document.getElementById('topPercSeq'), data.perc && data.perc.lanes, data.perc && data.perc.bars);
         _renderLaneGrid(document.getElementById('topStabsSeq'), data.stabs && data.stabs.lanes, data.stabs && data.stabs.bars);
         _renderLaneGrid(document.getElementById('topFxSeq'), data.fx && data.fx.lanes, data.fx && data.fx.bars);
-
-        if (s === int(document.getElementById('bassSlot')?.value || 0) && data.bass) {
-          _setMeta('bassMeta', `Slot ${s} · ${int(data.bass.bars || 1)} bar(s)`);
-          _renderBassGrid(document.getElementById('bassSeq'), data.bass);
-        }
-        if (s === int(document.getElementById('percSlot')?.value || 0) && data.perc) {
-          _renderLaneGrid(document.getElementById('percSeq'), data.perc.lanes, data.perc.bars);
-        }
-        if (s === int(document.getElementById('stabsSlot')?.value || 0) && data.stabs) {
-          _renderLaneGrid(document.getElementById('stabsSeq'), data.stabs.lanes, data.stabs.bars);
-        }
-        if (s === int(document.getElementById('fxSlot')?.value || 0) && data.fx) {
-          _renderLaneGrid(document.getElementById('fxSeq'), data.fx.lanes, data.fx.bars);
-        }
-
-        const aiSlot = document.getElementById('aiSlot');
-        if (aiSlot && s === int(aiSlot.value || 0) && data.drums) {
-          _renderLaneGrid(document.getElementById('topDrumsSeq'), data.drums.lanes, data.drums.bars);
-        }
 
         return resp;
       }
@@ -3770,71 +3922,6 @@
         }
       });
 
-      document.getElementById("kbRefreshStyles")?.addEventListener("click", async () => {
-        const btn = document.getElementById("kbRefreshStyles");
-        const note = document.getElementById("knowledgeRefreshNote");
-        setBusy(btn, true);
-        try {
-          await loadKnowledge();
-          if (note) note.textContent = "Styles reloaded from disk.";
-          log("Styles reloaded (Knowledge)");
-        } catch (e) {
-          if (note) note.textContent = "Error: " + e.message;
-        } finally {
-          setBusy(btn, false);
-        }
-      });
-
-      document.getElementById("kbRebuildIndex")?.addEventListener("click", async () => {
-        const btn = document.getElementById("kbRebuildIndex");
-        const note = document.getElementById("knowledgeRefreshNote");
-        setBusy(btn, true);
-        try {
-          const cat = document.getElementById("kbIndexCategory")?.value || "all";
-          const resp = await postJsonRebuildIndex(cat);
-          if (note) {
-            note.textContent = resp && resp.ok
-              ? "Browser index OK · " + (resp.item_count != null ? resp.item_count : "?") + " items · " + (resp.loadable_count != null ? resp.loadable_count : "?") + " loadable"
-              : "Index failed: " + ((resp && resp.error) || "unknown");
-          }
-          if (resp && resp.ok) log("Browser index rebuilt (Knowledge) · " + (resp.item_count || 0) + " items");
-        } catch (e) {
-          if (note) note.textContent = "Error: " + e.message;
-          log("Index rebuild: " + e.message);
-        } finally {
-          setBusy(btn, false);
-        }
-      });
-
-      document.getElementById("kbRefreshAll")?.addEventListener("click", async () => {
-        const btn = document.getElementById("kbRefreshAll");
-        const note = document.getElementById("knowledgeRefreshNote");
-        setBusy(btn, true);
-        try {
-          await loadKnowledge();
-          const cat = document.getElementById("kbIndexCategory")?.value || "all";
-          const resp = await postJsonRebuildIndex(cat);
-          if (note) {
-            const lines = ["Styles reloaded from disk."];
-            if (resp && resp.ok) {
-              lines.push(
-                "Browser index: " + (resp.item_count != null ? resp.item_count : "?") + " items (" + (resp.loadable_count != null ? resp.loadable_count : "?") + " loadable)."
-              );
-              if (resp.file) lines.push(String(resp.file));
-            } else {
-              lines.push("Browser index: " + ((resp && resp.error) || "failed"));
-            }
-            note.textContent = lines.join("\n");
-          }
-          if (resp && resp.ok) log("Knowledge refresh: styles + index OK");
-        } catch (e) {
-          if (note) note.textContent = "Error: " + e.message;
-          log("Refresh all: " + e.message);
-        } finally {
-          setBusy(btn, false);
-        }
-      });
-
       // =============================================
       // SMOKE TESTS
       // =============================================
@@ -3867,21 +3954,6 @@
         } catch (e) {
           setSmokeOutput("Error: " + e.message);
           log("Label scenes failed: " + e.message);
-        } finally {
-          setBusy(btn, false);
-        }
-      });
-
-      document.getElementById("btnSmokeLoadFirst")?.addEventListener("click", async () => {
-        const btn = document.getElementById("btnSmokeLoadFirst");
-        setBusy(btn, true);
-        try {
-          const trackIndex = int(document.getElementById("mcpTrackIndex")?.value || 0);
-          const resp = await post("/mcp/browser/load_first", { track_index: trackIndex, query: "synth" });
-          setSmokeOutput(JSON.stringify(resp, null, 2));
-        } catch (e) {
-          setSmokeOutput("Error: " + e.message);
-          log("Load first failed: " + e.message);
         } finally {
           setBusy(btn, false);
         }
@@ -3951,6 +4023,449 @@
 
       // Ensure composition is the initial view
       switchView('compose');
+    </script>
+    <script>
+      // =============================================
+      // LIVE STATE (PulseBridge event stream)
+      // Snapshot on connect, then kept current by Server-Sent Events from /live/events.
+      // =============================================
+      (() => {
+        const NOTE_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+        const EDITIONS = { suite: "Suite", standard: "Standard", intro_or_lite: "Intro / Lite", unknown: "Unknown edition" };
+        const EVENTS = [
+          "bridge.status", "bridge.connected", "bridge.disconnected",
+          "song.tempo", "song.is_playing", "song.tracks", "song.scenes", "song.key",
+          "track.name", "track.devices", "track.playing", "beat",
+        ];
+
+        const live = { serverUp: true, bridge: null, song: null, tracks: [], beat: null };
+        let renderQueued = false;
+        let snapshotTimer = null;
+        let streamOpen = false;
+
+        const $ = (id) => document.getElementById(id);
+        const connected = () => !!(live.bridge && live.bridge.connected);
+        const caps = () => (live.bridge && live.bridge.capabilities) || null;
+
+        // Coalesce bursts of events into one render. A timer rather than requestAnimationFrame,
+        // which browsers pause in hidden tabs; this page often sits behind Live.
+        function scheduleRender() {
+          if (renderQueued) return;
+          renderQueued = true;
+          setTimeout(() => { renderQueued = false; renderAll(); }, 30);
+        }
+
+        async function refreshBridge(refreshCaps = false) {
+          try {
+            const res = await fetch(`${API_BASE}/bridge/status${refreshCaps ? "?refresh=true" : ""}`);
+            // 404 = a server started before PulseBridge support: it serves this page but not the API.
+            live.serverOutdated = res.status === 404;
+            live.bridge = res.ok ? await res.json() : null;
+            live.serverUp = true;
+          } catch (e) {
+            live.bridge = null;
+            live.serverUp = false;
+          }
+          scheduleRender();
+        }
+
+        async function refreshSnapshot() {
+          if (!connected()) { live.song = null; live.tracks = []; scheduleRender(); return; }
+          try {
+            const r = await get("/live/snapshot");
+            if (r && r.ok) { live.song = r.result; live.tracks = r.result.tracks || []; }
+          } catch (e) { /* next event or reconnect retries */ }
+          scheduleRender();
+        }
+
+        function refreshSnapshotSoon() {
+          clearTimeout(snapshotTimer);
+          snapshotTimer = setTimeout(refreshSnapshot, 150);
+        }
+
+        function onEvent(name, data) {
+          const s = live.song;
+          switch (name) {
+            case "bridge.status":
+            case "bridge.connected":
+              if (name === "bridge.connected") log("Live connected via PulseBridge");
+              refreshBridge().then(refreshSnapshot);
+              return;
+            case "bridge.disconnected":
+              if (live.bridge) live.bridge.connected = false;
+              live.song = null; live.tracks = []; live.beat = null;
+              log("Live disconnected" + (data && data.error ? `: ${data.error}` : ""));
+              break;
+            case "song.tempo": if (s) s.tempo = data.tempo; break;
+            case "song.is_playing":
+              if (s) s.is_playing = !!data.is_playing;
+              if (!data.is_playing) live.beat = null;
+              break;
+            case "song.tracks": refreshSnapshotSoon(); break;  // indices may have shifted
+            case "song.scenes": if (s) s.num_scenes = data.num_scenes; break;
+            case "song.key": if (s) Object.assign(s, data); break;
+            case "track.name":
+            case "track.devices":
+            case "track.playing": {
+              const t = live.tracks[data.track_index];
+              if (!t) { refreshSnapshotSoon(); break; }
+              if (name === "track.name") t.name = data.name;
+              if (name === "track.devices") t.devices = data.devices || [];
+              if (name === "track.playing") {
+                t.playing_slot_index = data.playing_slot_index;
+                t.fired_slot_index = data.fired_slot_index;
+              }
+              break;
+            }
+            case "beat":
+              live.beat = data;
+              if (s) s.is_playing = true;
+              break;
+          }
+          scheduleRender();
+        }
+
+        function connectEvents() {
+          const es = new EventSource(`${API_BASE}/live/events`);
+          for (const name of EVENTS) {
+            es.addEventListener(name, (ev) => {
+              let data = {};
+              try { data = JSON.parse(ev.data || "{}"); } catch (e) { /* ignore */ }
+              onEvent(name, data);
+            });
+          }
+          es.onopen = () => {
+            if (!streamOpen) log("Live event stream connected");
+            streamOpen = true;
+            live.serverUp = true;
+            scheduleRender();
+          };
+          // EventSource reconnects by itself; the first event after that re-syncs everything.
+          es.onerror = () => {
+            if (streamOpen) log("Live event stream lost; reconnecting…");
+            streamOpen = false;
+            Object.assign(live, { serverUp: false, bridge: null, song: null, tracks: [], beat: null });
+            scheduleRender();
+          };
+        }
+
+        // ---------------------------------------------------------------- rendering
+
+        function keyLabel(s) {
+          if (!s || s.root_note === undefined || s.root_note === null) return "–";
+          return `${NOTE_NAMES[s.root_note] || "?"} ${s.scale_name || ""}`.trim();
+        }
+
+        function renderPill() {
+          const pill = $("livePill");
+          const text = $("livePillText");
+          if (!pill || !text) return;
+          let state, label;
+          if (!live.serverUp) {
+            state = "offline"; label = "Server not reachable";
+          } else if (live.serverOutdated) {
+            state = "offline"; label = "Server out of date: restart it";
+          } else if (connected()) {
+            const c = caps();
+            state = "bridge";
+            label = c ? `Live ${c.live_version} · ${EDITIONS[c.edition_guess] || c.edition_guess}` : "Live connected";
+          } else if (live.bridge) {
+            state = "osc"; label = "PulseBridge off · OSC fallback";
+          } else {
+            state = "unknown"; label = "Connecting to Live…";
+          }
+          pill.dataset.state = state;
+          text.textContent = label;
+        }
+
+        function renderTransport() {
+          const s = live.song;
+          const tempoEl = $("tempo");
+          if (s && tempoEl && document.activeElement !== tempoEl) {
+            tempoEl.value = String(Math.round(s.tempo * 10) / 10);
+          }
+          $("play")?.classList.toggle("is-playing", !!(s && s.is_playing));
+
+          const dots = document.querySelectorAll(".beat-dot");
+          const b = s && s.is_playing ? live.beat : null;
+          dots.forEach((d, i) => {
+            const on = !!b && (b.beat_in_bar % dots.length) === i;
+            d.classList.toggle("on", on);
+            d.classList.toggle("downbeat", on && b.beat_in_bar === 0);
+          });
+          const pos = $("beatPos");
+          if (pos) pos.textContent = b ? `${b.bar + 1}.${b.beat_in_bar + 1}` : (s && s.is_playing ? "…" : "–");
+        }
+
+        function setupHtml() {
+          if (live.serverOutdated) {
+            return `<strong>This Pulse Studio server is running old code.</strong> It was started before the latest update, so the Live connection, events and instrument picker aren't available. Stop it (Ctrl+C in its terminal) and start it again:<br>
+              <code>python -m uvicorn ableton_web_poc_server:app --host 127.0.0.1 --port 8005</code>`;
+          }
+          if (!live.serverUp) {
+            return `Can't reach the Pulse Studio server at <code>${escapeHtml(API_BASE)}</code>. Start it, then this page reconnects by itself:<br>
+              <code>python -m uvicorn ableton_web_poc_server:app --host 127.0.0.1 --port 8005</code>`;
+          }
+          const err = live.bridge && live.bridge.last_error ? `<div class="muted" style="margin-top: 8px;">Last error: ${escapeHtml(live.bridge.last_error)}</div>` : "";
+          return `<strong>PulseBridge isn't connected.</strong> Commands fall back to AbletonOSC if it's installed, but live updates and edition detection need PulseBridge.
+            <ol style="margin: 8px 0 0 18px; padding: 0;">
+              <li>Run <code>python pulse_bridge/install.py</code></li>
+              <li>Restart Live</li>
+              <li>Settings → Link, Tempo &amp; MIDI → Control Surface → <strong>PulseBridge</strong> (Input/Output: None)</li>
+            </ol>${err}`;
+        }
+
+        function renderOverview() {
+          const offline = $("liveOverviewOffline");
+          if (offline) {
+            offline.style.display = connected() ? "none" : "block";
+            if (!connected()) offline.innerHTML = setupHtml();
+          }
+          const s = live.song;
+          const set = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+          set("ovTransport", s ? (s.is_playing ? "Playing" : "Stopped") : "–");
+          set("ovTempo", s ? `${s.tempo.toFixed(1)} BPM` : "–");
+          set("ovPosition", s && s.is_playing && live.beat ? `${live.beat.bar + 1}.${live.beat.beat_in_bar + 1}` : "–");
+          set("ovKey", keyLabel(s));
+          set("ovTracks", s ? String(s.num_tracks) : "–");
+          set("ovScenes", s ? String(s.num_scenes) : "–");
+          if (s && window.renderSceneButtons) window.renderSceneButtons(s.num_scenes);
+
+          const rows = $("ovTrackRows");
+          if (!rows) return;
+          if (!live.tracks.length) {
+            rows.innerHTML = `<tr><td colspan="4" class="muted">${connected() ? "No tracks in this set." : "Not connected to Live."}</td></tr>`;
+            return;
+          }
+          rows.innerHTML = live.tracks.map((t) => {
+            const playing = t.playing_slot_index >= 0;
+            const queued = t.fired_slot_index >= 0 && t.fired_slot_index !== t.playing_slot_index;
+            let clip = playing ? `▶ Scene ${t.playing_slot_index + 1}` : "–";
+            if (queued) clip += ` <span class="muted">→ ${t.fired_slot_index + 1}</span>`;
+            const devices = (t.devices || []).length
+              ? t.devices.map((d) => `<span class="chip">${escapeHtml(d)}</span>`).join("")
+              : `<span class="muted">${t.is_midi === false ? "audio track" : "no devices"}</span>`;
+            return `<tr class="${playing ? "playing" : ""}">
+              <td class="muted">${t.index + 1}</td>
+              <td>${escapeHtml(t.name)}${t.mute ? ' <span class="muted">(muted)</span>' : ""}</td>
+              <td>${devices}</td>
+              <td>${clip}</td>
+            </tr>`;
+          }).join("");
+        }
+
+        function renderSystem() {
+          const setup = $("bridgeSetup");
+          if (setup) {
+            setup.style.display = connected() ? "none" : "block";
+            if (!connected()) setup.innerHTML = setupHtml();
+          }
+          const info = $("bridgeInfo");
+          if (!info) return;
+          const c = caps();
+          const b = live.bridge;
+          const rows = [["Status", connected() ? `<span style="color: var(--success);">Connected</span> · ${escapeHtml(b.host)}:${b.port}` : (b ? "Not connected" : "–")]];
+          if (connected() && c) {
+            const f = c.features || {};
+            const feat = [
+              ["note_extended", "Note probability"],
+              ["song_key", "Song key & scale"],
+              ["undo_steps", "Grouped undo"],
+              ["groove_pool", "Groove pool"],
+              ["max_for_live_content", "Max for Live"],
+            ].map(([k, label]) => `<span class="chip ${f[k] ? "ok" : "no"}">${label}</span>`).join("");
+            const inst = (c.devices && c.devices.instruments) || [];
+            rows.push(
+              ["Live", `${escapeHtml(c.live_version)} <span class="muted">(Python ${escapeHtml(c.python_version)})</span>`],
+              ["Edition", `${escapeHtml(EDITIONS[c.edition_guess] || c.edition_guess)} <span class="muted">(detected from installed instruments)</span>`],
+              ["Track limit", c.track_limit_hint ? `${c.track_limit_hint} <span class="muted">(Lite 8 / Intro 16)</span>` : "None"],
+              ["Features", feat],
+              ["Fallback devices", `Drums: ${escapeHtml(c.defaults.drums)} · Melodic: ${escapeHtml(c.defaults.melodic)}`],
+              ["Instruments", `${inst.length} <span class="muted">— ${escapeHtml(inst.join(", "))}</span>`],
+              ["Bridge", `PulseBridge ${escapeHtml(c.bridge_version)} · protocol ${c.protocol}`],
+            );
+          }
+          info.innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+        }
+
+        function renderAll() {
+          if (window.setPickerTracks) window.setPickerTracks(connected() ? live.tracks : []);
+          renderPill();
+          renderTransport();
+          renderOverview();
+          renderSystem();
+          syncMeterStream();  // opens/closes the meter stream as Live connects or drops
+        }
+
+        // ---------------------------------------------------------------- visualizer
+        // Meter frames arrive ~10 Hz from /live/events?meters=only, opened only while the
+        // Visualizer is on screen (so Live does no meter work otherwise). Drawing runs at the
+        // display rate with fast attack / slow release so 10 Hz data still moves smoothly.
+
+        const viz = {
+          active: false, es: null, raf: 0,
+          target: { master: [0, 0], tracks: [] },
+          shown: { master: [0, 0], tracks: [] },
+          peak: [{ v: 0, t: 0 }, { v: 0, t: 0 }],
+          flash: 0, lastBeat: null, rowsKey: "",
+        };
+
+        function syncMeterStream() {
+          const want = viz.active && !document.hidden && connected();
+          if (want && !viz.es) {
+            viz.es = new EventSource(`${API_BASE}/live/events?meters=only`);
+            viz.es.addEventListener("meters", (ev) => {
+              try { viz.target = JSON.parse(ev.data); } catch (e) { /* ignore */ }
+            });
+          } else if (!want && viz.es) {
+            viz.es.close();
+            viz.es = null;
+            viz.target = { master: [0, 0], tracks: [] };
+          }
+          if (viz.active && !viz.raf) viz.raf = requestAnimationFrame(drawViz);
+        }
+
+        function ease(shown, target) {
+          // Rise immediately, fall ~12% per frame.
+          return target >= shown ? target : Math.max(target, shown * 0.88);
+        }
+
+        function renderVizTracks() {
+          const box = $("vizTracks");
+          if (!box) return;
+          const key = live.tracks.map((t) => t.name).join("\u0000");
+          if (key !== viz.rowsKey) {
+            viz.rowsKey = key;
+            box.innerHTML = live.tracks.length
+              ? live.tracks.map((t, i) => `<div class="viz-track"><span class="viz-track-name" title="${escapeHtml(t.name)}">${escapeHtml(t.name)}</span><div class="viz-bar"><div class="viz-fill" data-i="${i}"></div></div></div>`).join("")
+              : `<span class="muted">No tracks.</span>`;
+          }
+          box.querySelectorAll(".viz-fill").forEach((el) => {
+            el.style.width = `${Math.round((viz.shown.tracks[+el.dataset.i] || 0) * 100)}%`;
+          });
+        }
+
+        function drawViz(now) {
+          viz.raf = 0;
+          if (!viz.active) return;
+          const canvas = $("vizCanvas");
+          const off = $("vizOffline");
+          if (off) {
+            off.style.display = connected() ? "none" : "block";
+            if (!connected()) off.innerHTML = setupHtml();
+          }
+          if (canvas) {
+            const css = getComputedStyle(document.documentElement);
+            const accent = css.getPropertyValue("--accent").trim() || "#6366f1";
+            const good = css.getPropertyValue("--success").trim() || "#10b981";
+            const hot = css.getPropertyValue("--danger").trim() || "#ef4444";
+            const muted = css.getPropertyValue("--text-muted").trim() || "#94a3b8";
+
+            const dpr = window.devicePixelRatio || 1;
+            const w = canvas.clientWidth, h = canvas.clientHeight;
+            if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+              canvas.width = Math.round(w * dpr);
+              canvas.height = Math.round(h * dpr);
+            }
+            const ctx = canvas.getContext("2d");
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+            ctx.clearRect(0, 0, w, h);
+
+            // Smooth toward the latest frame.
+            const tm = viz.target.master || [0, 0];
+            viz.shown.master = [0, 1].map((c) => ease(viz.shown.master[c] || 0, tm[c] || 0));
+            const tt = viz.target.tracks || [];
+            viz.shown.tracks = live.tracks.map((_, i) => ease(viz.shown.tracks[i] || 0, tt[i] || 0));
+            viz.peak.forEach((p, c) => {
+              const v = viz.shown.master[c];
+              if (v >= p.v) { p.v = v; p.t = now; } else if (now - p.t > 900) p.v = Math.max(v, p.v - 0.01);
+            });
+
+            // Beat flash (bigger on the downbeat).
+            const b = live.song && live.song.is_playing ? live.beat : null;
+            if (b && b.beat !== viz.lastBeat) { viz.lastBeat = b.beat; viz.flash = b.beat_in_bar === 0 ? 1 : 0.6; }
+            viz.flash *= 0.92;
+
+            const level = Math.max(viz.shown.master[0], viz.shown.master[1]);
+            const cx = w / 2, cy = h / 2, r0 = Math.min(w, h) * 0.16;
+
+            // Glow that swells with the master level.
+            const r = r0 * (1 + level * 1.1);
+            const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r * 1.8);
+            g.addColorStop(0, accent);
+            g.addColorStop(0.45, accent + "55");
+            g.addColorStop(1, "transparent");
+            ctx.globalAlpha = 0.25 + level * 0.75;
+            ctx.fillStyle = g;
+            ctx.beginPath(); ctx.arc(cx, cy, r * 1.8, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = 1;
+
+            // Beat ring expanding outward.
+            if (viz.flash > 0.02) {
+              ctx.strokeStyle = good;
+              ctx.globalAlpha = viz.flash;
+              ctx.lineWidth = 3;
+              ctx.beginPath(); ctx.arc(cx, cy, r0 * (1.2 + (1 - viz.flash) * 1.6), 0, Math.PI * 2); ctx.stroke();
+              ctx.globalAlpha = 1;
+            }
+
+            // Core.
+            ctx.fillStyle = accent;
+            ctx.beginPath(); ctx.arc(cx, cy, r0 * (0.35 + level * 0.25), 0, Math.PI * 2); ctx.fill();
+
+            // Master L/R bars with peak hold, at both edges.
+            const barW = 14, pad = 24, top = 24, bh = h - 48;
+            [["L", pad], ["R", w - pad - barW]].forEach(([label, x], c) => {
+              const v = viz.shown.master[c];
+              ctx.fillStyle = "rgba(255,255,255,0.05)";
+              ctx.fillRect(x, top, barW, bh);
+              ctx.fillStyle = v > 0.92 ? hot : good;
+              ctx.fillRect(x, top + bh * (1 - v), barW, bh * v);
+              ctx.fillStyle = viz.peak[c].v > 0.92 ? hot : "#fff";
+              ctx.fillRect(x, top + bh * (1 - viz.peak[c].v) - 1, barW, 2);
+              ctx.fillStyle = muted;
+              ctx.font = "11px Inter, sans-serif";
+              ctx.textAlign = "center";
+              ctx.fillText(label, x + barW / 2, h - 8);
+            });
+
+            if (connected() && level === 0 && !(live.song && live.song.is_playing)) {
+              ctx.fillStyle = muted;
+              ctx.font = "13px Inter, sans-serif";
+              ctx.textAlign = "center";
+              ctx.fillText("Press play in Live", cx, cy + r0 * 2.2);
+            }
+          }
+          renderVizTracks();
+          viz.raf = requestAnimationFrame(drawViz);
+        }
+
+        const baseSwitchView = window.switchView;
+        window.switchView = (name) => {
+          baseSwitchView(name);
+          viz.active = String(name || "").toLowerCase() === "visualizer";
+          syncMeterStream();
+        };
+        document.addEventListener("visibilitychange", syncMeterStream);
+
+        // ---------------------------------------------------------------- wiring
+
+        $("btnBridgeRefresh")?.addEventListener("click", async () => {
+          const btn = $("btnBridgeRefresh");
+          setBusy(btn, true);
+          try {
+            await refreshBridge(true);
+            await refreshSnapshot();
+          } finally {
+            setBusy(btn, false);
+          }
+        });
+        $("refreshStatus")?.addEventListener("click", () => refreshBridge().then(refreshSnapshot));
+
+        renderAll();
+        refreshBridge();  // detects an out-of-date server even if the event stream never opens
+        connectEvents();
+      })();
     </script>
   </body>
 </html>

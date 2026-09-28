@@ -6,6 +6,20 @@
       "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["-m", "uvicorn", "ableton_web_poc_server:app", "--host", "127.0.0.1", "--port", "8005"],
       "port": 8005
+    },
+    {
+      "name": "pulse-studio-8006",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "ableton_web_poc_server:app", "--host", "127.0.0.1", "--port", "8006"],
+      "port": 8006,
+      "autoPort": false
+    },
+    {
+      "name": "pulse-studio-8007",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "ableton_web_poc_server:app", "--host", "127.0.0.1", "--port", "8007"],
+      "port": 8007,
+      "autoPort": false
     }
   ]
 }
