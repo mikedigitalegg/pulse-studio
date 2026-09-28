@@ -248,6 +248,7 @@ class Commands(object):
             "current_song_time": s.current_song_time,
             "signature_numerator": s.signature_numerator,
             "signature_denominator": s.signature_denominator,
+            "clip_trigger_quantization": int(s.clip_trigger_quantization),  # Live's launch quantization menu, 0 = None
             "num_tracks": len(s.tracks),
             "num_scenes": len(s.scenes),
             "track_names": [t.name for t in s.tracks],

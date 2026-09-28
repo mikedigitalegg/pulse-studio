@@ -4031,7 +4031,8 @@ def _song_clock() -> dict | None:
     playing = bool(s.get("is_playing"))
     if playing:
         beat += (time.monotonic() - t0) / 2.0 * tempo / 60.0
-    return {"playing": playing, "beat": beat, "tempo": tempo, "beats_per_bar": num * 4.0 / den}
+    return {"playing": playing, "beat": beat, "tempo": tempo, "beats_per_bar": num * 4.0 / den,
+            "launch_q": s.get("clip_trigger_quantization")}
 
 
 def _next_boundary(clock: dict, unit_beats: float) -> float:
@@ -4077,6 +4078,62 @@ def _grid_or_error() -> tuple[dict | None, dict | None]:
     if not clock["playing"]:
         return None, {"ok": False, "error": "not_playing", "hint": "Press play first: moves land on the next bar."}
     return clock, None
+
+
+# Live's launch quantization menu (Song.clip_trigger_quantization) as beats; ("bars", n) scales
+# with the time signature. 0 is None: clips launch the moment they're fired.
+_LAUNCH_Q = {0: 0.0, 1: ("bars", 8), 2: ("bars", 4), 3: ("bars", 2), 4: ("bars", 1), 5: 2.0, 6: 4 / 3,
+             7: 1.0, 8: 2 / 3, 9: 0.5, 10: 1 / 3, 11: 0.25, 12: 1 / 6, 13: 0.125}
+
+
+def _launch_quantum(clock: dict) -> float:
+    """Launch quantization in beats. A bridge that doesn't report it is taken as Live's default, 1 bar."""
+    q = _LAUNCH_Q.get(clock.get("launch_q"), ("bars", 1))
+    return q[1] * clock["beats_per_bar"] if isinstance(q, tuple) else float(q)
+
+
+def _launch_warning(clock: dict) -> str | None:
+    if _launch_quantum(clock) > clock["beats_per_bar"]:
+        return "Live's launch quantization is longer than a bar, so the launch may land a bar or more late. Set it to 1 Bar in Live's control bar."
+    return None
+
+
+def _launch_on(target: float, fire) -> None:
+    """Fire a clip or scene so Live launches it on beat target.
+
+    Live snaps a launch to its launch quantization, so the fire goes out just ahead of target and
+    Live places it; with quantization off it goes out on target itself.
+    """
+    clock = _song_clock()
+    quantum = _launch_quantum(clock) if clock else 4.0
+    _wait_for_beat(target - (min(0.25, quantum / 2) if quantum > 0 else 0.0))
+    if _is_playing():
+        fire()
+
+
+def _is_playing() -> bool:
+    clock = _song_clock()
+    return bool(clock and clock["playing"])
+
+
+def _launch_boundary(clock: dict) -> float:
+    """The next bar a launch can still be sent ahead of. A press just after a downbeat is too late for it."""
+    bpb = clock["beats_per_bar"]
+    target = math.floor(clock["beat"] / bpb) * bpb + bpb
+    if target - clock["beat"] < 0.35:  # the clip write and the fire need a moment
+        target += bpb
+    return target
+
+
+def _return_index(key: str) -> int | None:
+    """The return carrying one of Pulse's devices for key ("reverb", "delay"), or Live's own A-Reverb/B-Delay."""
+    spec = next(s for s in PULSE_RETURNS if s["key"] == key)
+    returns = (BRIDGE.request("get_return_tracks", timeout_s=2.0) or {}).get("returns") or []
+    for r in returns:
+        names = {d.get("name") for d in r.get("devices") or []}
+        if r.get("name") == spec["name"] or names & set(spec["chain"]):
+            return int(r["return_index"])
+    return None
 
 
 def _role_tracks(roles: list[str]) -> list[int]:
@@ -4162,7 +4219,11 @@ def moves_status():
         bd = {"running": _BREAKDOWN["running"], "drop_beat": _BREAKDOWN["drop_beat"]}
     with _THROW_LOCK:
         th = {"running": _THROW["running"]}
-    return {"ok": True, "breakdown": bd, "delay_throw": th}
+    with _TAIL_LOCK:
+        tail = {"running": _TAIL["running"]}
+    with _FILL_LOCK:
+        fill = {"running": _FILL["running"]}
+    return {"ok": True, "breakdown": bd, "delay_throw": th, "tail_out": tail, "fill": fill}
 
 
 # ---------------------------------------------------------------- Delay Throw
@@ -4181,34 +4242,50 @@ _THROW_LOCK = threading.Lock()
 _THROW: dict = {"running": False}
 
 
-def _delay_return_index() -> int | None:
-    """The return carrying one of Pulse's delay devices (PS-Delay, or Live's own B-Delay)."""
-    spec = next(s for s in PULSE_RETURNS if s["key"] == "delay")
-    returns = (BRIDGE.request("get_return_tracks", timeout_s=2.0) or {}).get("returns") or []
-    for r in returns:
-        names = {d.get("name") for d in r.get("devices") or []}
-        if r.get("name") == spec["name"] or names & set(spec["chain"]):
-            return int(r["return_index"])
-    return None
+def _return_or_error(key: str) -> tuple[int | None, dict | None]:
+    try:
+        ri = _return_index(key)
+    except BridgeError as e:
+        if "unknown_command" in str(e):
+            return None, {"ok": False, "error": "bridge_outdated", "hint": _BRIDGE_UPDATE_HINT}
+        return None, {"ok": False, "error": str(e)}
+    if ri is None:
+        return None, {"ok": False, "error": f"no_{key}_return", "hint": f"No {key} return in this set yet: load a sound palette in Compose to add one."}
+    return ri, None
+
+
+def _read_sends(tracks: list[int], ri: int) -> dict[int, float]:
+    """Each track's current level on send ri, so a move can put it back exactly."""
+    saved: dict[int, float] = {}
+    for ti in tracks:
+        try:
+            sends = (BRIDGE.request("get_track", {"track_index": ti}, timeout_s=1.0) or {}).get("sends") or []
+        except BridgeError:
+            continue
+        if ri < len(sends):
+            saved[ti] = float(sends[ri])
+    return saved
+
+
+def _set_sends(levels: dict[int, float], ri: int, tag: str) -> list[int]:
+    done = []
+    for ti, value in levels.items():
+        try:
+            BRIDGE.request("set_send", {"track_index": ti, "send_index": ri, "value": value}, timeout_s=1.0)
+            done.append(ti)
+        except BridgeError as e:
+            print(f"[{tag}] send {ti} failed: {e}")
+    return done
 
 
 def _throw_thread(start_beat: float, end_beat: float, saved: dict[int, float], ri: int, level: float):
     raised: list[int] = []
     try:
         _wait_for_beat(start_beat)
-        for ti in saved:
-            try:
-                BRIDGE.request("set_send", {"track_index": ti, "send_index": ri, "value": level}, timeout_s=1.0)
-                raised.append(ti)
-            except BridgeError as e:
-                print(f"[delay throw] send {ti} failed: {e}")
+        raised = _set_sends({ti: level for ti in saved}, ri, "delay throw")
         _wait_for_beat(end_beat)
     finally:
-        for ti in raised:
-            try:
-                BRIDGE.request("set_send", {"track_index": ti, "send_index": ri, "value": saved[ti]}, timeout_s=1.0)
-            except BridgeError as e:
-                print(f"[delay throw] restoring send {ti} failed: {e}")
+        _set_sends({ti: saved[ti] for ti in raised}, ri, "delay throw")
         with _THROW_LOCK:
             _THROW["running"] = False
 
@@ -4221,23 +4298,11 @@ def move_delay_throw(req: DelayThrowRequest):
     clock, err = _grid_or_error()
     if err:
         return err
-    try:
-        ri = _delay_return_index()
-    except BridgeError as e:
-        if "unknown_command" in str(e):
-            return {"ok": False, "error": "bridge_outdated", "hint": _BRIDGE_UPDATE_HINT}
-        return {"ok": False, "error": str(e)}
-    if ri is None:
-        return {"ok": False, "error": "no_delay_return", "hint": "No delay return in this set yet: load a sound palette in Compose to add one."}
+    ri, err = _return_or_error("delay")
+    if err:
+        return err
     tracks = list(dict.fromkeys(_role_tracks(req.roles) + [int(t) for t in req.track_indices if int(t) >= 0]))
-    saved: dict[int, float] = {}
-    for ti in tracks:
-        try:
-            sends = (BRIDGE.request("get_track", {"track_index": ti}, timeout_s=1.0) or {}).get("sends") or []
-        except BridgeError:
-            continue
-        if ri < len(sends):
-            saved[ti] = float(sends[ri])
+    saved = _read_sends(tracks, ri)
     if not saved:
         return {"ok": False, "error": "no_tracks", "hint": "None of those tracks has a send to the delay return."}
     start = _next_boundary(clock, 1.0)
@@ -4246,6 +4311,174 @@ def move_delay_throw(req: DelayThrowRequest):
         _THROW["running"] = True
     threading.Thread(target=_throw_thread, args=(start, end, saved, ri, float(req.level)), daemon=True).start()
     return {"ok": True, "status": "throwing", "start_beat": start, "end_beat": end, "return_index": ri, "tracks": sorted(saved)}
+
+
+# ---------------------------------------------------------------- Reverb Tail Out
+# A softer way into the next scene than a hard cut. From the next bar every playing part feeds the
+# reverb at full for feed_beats, then the dry parts drop out and only the tail rings. The next
+# scene lands `bars` bars after the start, the parts come back with it and every send goes back.
+
+class TailOutRequest(BaseModel):
+    bars: int = Field(default=2, ge=1, le=8)  # from the next bar to the next scene
+    feed_beats: float = Field(default=2.0, gt=0.0, le=16.0)  # how long the parts feed the reverb
+    scene_index: int | None = Field(default=None, ge=0)  # None: the same clips come back
+    track_indices: list[int] = Field(default_factory=list)  # extra tracks, such as the vox track
+
+
+_TAIL_LOCK = threading.Lock()
+_TAIL: dict = {"running": False}
+
+
+def _tail_thread(start: float, cut: float, land: float, saved: dict[int, float], playing: list[int], ri: int, scene_index: int | None):
+    raised: list[int] = []
+    muted: list[int] = []
+    try:
+        _wait_for_beat(start)
+        if not _is_playing():
+            return
+        raised = _set_sends({ti: 1.0 for ti in saved}, ri, "tail out")
+        _wait_for_beat(cut)
+        if not _is_playing():
+            return
+        muted = playing
+        _set_mutes(muted, True)
+        if scene_index is not None:
+            _launch_on(land, lambda: BRIDGE.request("fire_scene", {"scene_index": scene_index}, timeout_s=1.0))
+        _wait_for_beat(land)
+    finally:
+        # Sends go back as the parts return; the tail already in the reverb rings on regardless.
+        _set_mutes(muted, False)
+        _set_sends({ti: saved[ti] for ti in raised}, ri, "tail out")
+        with _TAIL_LOCK:
+            _TAIL["running"] = False
+
+
+@app.post("/moves/tail_out")
+def move_tail_out(req: TailOutRequest):
+    with _TAIL_LOCK:
+        if _TAIL["running"]:
+            return {"ok": True, "status": "tailing"}
+    clock, err = _grid_or_error()
+    if err:
+        return err
+    ri, err = _return_or_error("reverb")
+    if err:
+        return err
+    tracks = list(dict.fromkeys([int(p["track_index"]) for p in PULSE_TRACK_PLAN] + [int(t) for t in req.track_indices if int(t) >= 0]))
+    playing = []
+    for ti in tracks:
+        try:
+            if not (BRIDGE.request("get_track", {"track_index": ti}, timeout_s=1.0) or {}).get("mute"):
+                playing.append(ti)
+        except BridgeError:
+            continue
+    saved = _read_sends(playing, ri)
+    if not saved:
+        return {"ok": False, "error": "no_tracks", "hint": "No playing part has a send to the reverb return."}
+    bpb = clock["beats_per_bar"]
+    start = _next_boundary(clock, bpb)
+    land = start + req.bars * bpb
+    cut = start + min(float(req.feed_beats), land - start - 1.0)  # at least a beat of tail
+    with _TAIL_LOCK:
+        _TAIL["running"] = True
+    threading.Thread(target=_tail_thread, args=(start, cut, land, saved, playing, ri, req.scene_index), daemon=True).start()
+    out = {"ok": True, "status": "tailing", "start_beat": start, "cut_beat": cut, "land_beat": land,
+           "return_index": ri, "tracks": sorted(saved), "scene_index": req.scene_index}
+    if req.scene_index is not None and _launch_warning(clock):
+        out["warning"] = _launch_warning(clock)
+    return out
+
+
+# ---------------------------------------------------------------- Fill → Next
+# A one-bar roll written into a free slot on the drums track, launched on the next bar, then the
+# next scene on the bar after. With no next scene the drums go back to the clip they were
+# playing. The fill clip is deleted once it's done, so the set isn't left with one per press.
+
+FILL_CLIP_NAME = "PS-FILL"
+
+
+class FillRequest(BaseModel):
+    kind: str = Field(default="snare", pattern="^(snare|hats)$")
+    scene_index: int | None = Field(default=None, ge=0)
+
+
+_FILL_LOCK = threading.Lock()
+_FILL: dict = {"running": False}
+
+
+def _fill_notes(kind: str, bar_beats: float) -> list[dict]:
+    """A roll that doubles in speed through the bar and swells in velocity: 8ths, 16ths, 32nds."""
+    pitch = LANE_TO_MIDI_NOTE["snare" if kind == "snare" else "ch"]
+    lo, hi = (70, 127) if kind == "snare" else (60, 120)
+    notes = []
+    for seg_start, seg_end, step in ((0.0, 0.5, 0.5), (0.5, 0.75, 0.25), (0.75, 1.0, 0.125)):
+        t = seg_start * bar_beats
+        while t < seg_end * bar_beats - 1e-6:
+            notes.append({"pitch": pitch, "start_time": round(t, 4), "duration": step * 0.9,
+                          "velocity": round(lo + (hi - lo) * t / bar_beats)})
+            t += step
+    notes.append({"pitch": LANE_TO_MIDI_NOTE["kick"], "start_time": 0.0, "duration": 0.25, "velocity": 110})
+    if kind == "hats":
+        notes.append({"pitch": LANE_TO_MIDI_NOTE["oh"], "start_time": bar_beats - 0.5, "duration": 0.45, "velocity": 115})
+    return notes
+
+
+def _fill_thread(drums: int, slot: int, start: float, bpb: float, scene_index: int | None, prev_slot: int):
+    try:
+        _launch_on(start, lambda: BRIDGE.request("fire_clip", {"track_index": drums, "clip_slot_index": slot}, timeout_s=1.0))
+        after = start + bpb
+        if scene_index is not None:
+            _launch_on(after, lambda: BRIDGE.request("fire_scene", {"scene_index": scene_index}, timeout_s=1.0))
+        elif prev_slot >= 0:
+            _launch_on(after, lambda: BRIDGE.request("fire_clip", {"track_index": drums, "clip_slot_index": prev_slot}, timeout_s=1.0))
+        else:
+            _launch_on(after, lambda: BRIDGE.request("stop_clip", {"track_index": drums, "clip_slot_index": slot}, timeout_s=1.0))
+        # Delete once something else has taken over; a long launch quantization can take a few bars.
+        for n in range(8):
+            _wait_for_beat(after + 1.0 + n * bpb)
+            if not _is_playing():
+                break
+            try:
+                playing = (BRIDGE.request("get_track", {"track_index": drums}, timeout_s=1.0) or {}).get("playing_slot_index")
+            except BridgeError:
+                break
+            if playing != slot:
+                break
+    finally:
+        try:
+            BRIDGE.request("delete_clip", {"track_index": drums, "clip_slot_index": slot}, timeout_s=1.0)
+        except BridgeError as e:
+            print(f"[fill] deleting the fill clip failed: {e}")
+        with _FILL_LOCK:
+            _FILL["running"] = False
+
+
+@app.post("/moves/fill")
+def move_fill(req: FillRequest):
+    with _FILL_LOCK:
+        if _FILL["running"]:
+            return {"ok": True, "status": "filling"}
+    clock, err = _grid_or_error()
+    if err:
+        return err
+    drums = _role_tracks(["drums"])[0]
+    bpb = clock["beats_per_bar"]
+    try:
+        prev_slot = int((BRIDGE.request("get_track", {"track_index": drums}, timeout_s=1.0) or {}).get("playing_slot_index", -1))
+        slot = int(BRIDGE.request("find_free_slot", {"track_index": drums}, timeout_s=1.0)["slot"])
+        BRIDGE.request("write_clip", {"track_index": drums, "clip_slot_index": slot, "length": bpb,
+                                      "notes": _fill_notes(req.kind, bpb), "name": FILL_CLIP_NAME}, timeout_s=2.0)
+    except BridgeError as e:
+        return {"ok": False, "error": str(e)}
+    clock = _song_clock() or clock  # writing took a moment
+    start = _launch_boundary(clock)
+    with _FILL_LOCK:
+        _FILL["running"] = True
+    threading.Thread(target=_fill_thread, args=(drums, slot, start, bpb, req.scene_index, prev_slot), daemon=True).start()
+    out = {"ok": True, "status": "filling", "start_beat": start, "next_beat": start + bpb, "slot": slot, "scene_index": req.scene_index}
+    if _launch_warning(clock):
+        out["warning"] = _launch_warning(clock)
+    return out
 
 
 @app.post("/patterns/launch")
@@ -6132,6 +6365,146 @@ async def instruments_palette(req: PaletteRequest):
         return {"ok": False, "error": "missing_style"}
     roles = [r for r in (req.roles or []) if r in instrument_palette.ROLE_POOLS] or None
     return await _apply_instrument_palette(style, prompt=req.prompt, replace=bool(req.replace), roles=roles)
+
+
+def _plan_for_role(role: str) -> dict | None:
+    return next((p for p in PULSE_TRACK_PLAN if p["role"] == role), None)
+
+
+class InstrumentCandidatesRequest(BaseModel):
+    style: str
+    role: str
+    prompt: str | None = None
+    query: str | None = None
+    per_group: int = 40
+
+
+@app.post("/instruments/candidates")
+async def instruments_candidates(req: InstrumentCandidatesRequest):
+    """A Pulse role's library sounds grouped by fit with the style, plus what's on its track now."""
+    role = (req.role or "").strip().lower()
+    plan = _plan_for_role(role)
+    if plan is None or role not in instrument_palette.ROLE_POOLS:
+        return {"ok": False, "error": "unknown_role", "roles": [p["role"] for p in PULSE_TRACK_PLAN]}
+    style = (req.style or "").strip().lower()
+    items = _browser_index_items()
+    if not items:
+        return {"ok": False, "error": "index_not_built", "hint": "Build the browser index first (Library tab)."}
+    pool = instrument_palette.role_pool(items, role)
+    groups = instrument_palette.group_candidates(
+        pool, role, style, req.prompt, per_group=max(1, min(200, int(req.per_group))), query=req.query,
+    )
+    current = None
+    if BRIDGE.connected:
+        try:
+            playable, _ = _track_sound_state(await _bridge_call("get_track", {"track_index": int(plan["track_index"])}))
+            current = playable[0].get("name") if playable else None
+        except BridgeError:
+            pass
+    return {"ok": True, "style": style, "role": role, "track_index": int(plan["track_index"]),
+            "current": current, "pool_size": len(pool), "groups": groups}
+
+
+@app.get("/instruments/current")
+async def instruments_current():
+    """What's on each Pulse track now, and the style Pulse picked it for (if Pulse loaded it)."""
+    if not BRIDGE.connected:
+        return {"ok": False, "error": "bridge_not_connected", "bridge": BRIDGE.status()}
+    state = _read_palette_state()
+    results = []
+    for p in PULSE_TRACK_PLAN:
+        ti, role = int(p["track_index"]), p["role"]
+        row = {"track_index": ti, "role": role, "action": "current"}
+        try:
+            info = await _bridge_call("get_track", {"track_index": ti})
+        except BridgeError as e:
+            results.append({**row, "action": "failed", "error": str(e)})
+            continue
+        playable, _ = _track_sound_state(info)
+        name = str(playable[0].get("name") or "") if playable else None
+        rec = state.get(str(ti))
+        picked_for = rec.get("style") if isinstance(rec, dict) and name and rec.get("device") == name else None
+        row.update({"name": name, "track_name": info.get("name"), "picked_for": picked_for})
+        if role in ("drums", "perc") and playable and not any(d.get("is_drum_rack") for d in playable):
+            row["warning"] = "Not a drum kit: drum patterns will play as pitched notes."
+        results.append(row)
+    return {"ok": True, "results": results}
+
+
+@app.post("/instruments/suggest")
+async def instruments_suggest(req: InstrumentCandidatesRequest):
+    """The AI's top 3 sounds for one Pulse role, given the style and what's on the other tracks."""
+    if not _ai_configured():
+        return {"ok": False, "error": "ai_not_configured", "hint": "Set up an AI provider on the System page."}
+    listing = await instruments_candidates(req)
+    if not listing.get("ok"):
+        return listing
+    others: dict[str, str] = {}
+    if BRIDGE.connected:
+        for p in PULSE_TRACK_PLAN:
+            if p["role"] == listing["role"]:
+                continue
+            try:
+                playable, _ = _track_sound_state(await _bridge_call("get_track", {"track_index": int(p["track_index"])}))
+            except BridgeError:
+                continue
+            if playable:
+                others[p["role"]] = str(playable[0].get("name") or "")
+    picks, meta = await instrument_palette.ai_top_picks(
+        _call_ai_async, groups=listing["groups"], role=listing["role"], style=listing["style"],
+        prompt=req.prompt, others=others, current=listing.get("current"),
+    )
+    if not picks:
+        return {"ok": False, "error": meta.get("error") or "ai_failed", "hint": meta.get("hint"), "ai": meta}
+    return {"ok": True, "role": listing["role"], "style": listing["style"], "picks": picks, "others": others, "ai": meta}
+
+
+class InstrumentSwapRequest(BaseModel):
+    style: str
+    role: str
+    uri: str
+
+
+@app.post("/instruments/swap")
+async def instruments_swap(req: InstrumentSwapRequest):
+    """Replace the instrument on a Pulse role's track with one hand-picked from /instruments/candidates."""
+    if not BRIDGE.connected:
+        return {"ok": False, "error": "bridge_not_connected", "bridge": BRIDGE.status()}
+    role = (req.role or "").strip().lower()
+    plan = _plan_for_role(role)
+    if plan is None:
+        return {"ok": False, "error": "unknown_role"}
+    item = next((it for it in instrument_palette.role_pool(_browser_index_items(), role) if it.get("uri") == req.uri), None)
+    if item is None:
+        return {"ok": False, "error": "not_in_role_pool", "hint": "Pick a sound from the list for this role."}
+    style = (req.style or "").strip().lower()
+    ti = int(plan["track_index"])
+
+    info = await _bridge_call("get_track", {"track_index": ti})
+    playable, empty = _track_sound_state(info)
+    previous = playable[0].get("name") if playable else None
+    for d in sorted(playable + empty, key=lambda d: d["index"], reverse=True):
+        try:
+            await _bridge_call("delete_device", {"track_index": ti, "device_index": d["index"]})
+        except BridgeError:
+            pass
+    ok, detail = await _load_and_verify(ti, item)
+    _DRUM_MAPS.invalidate(ti)
+    if not ok:
+        return {"ok": False, "error": "load_failed", "detail": detail, "previous": previous,
+                "hint": "The old instrument was removed; pick another sound or Re-pick."}
+    _record_palette_load(ti, style, detail)
+    result = {"track_index": ti, "role": role, "action": "loaded", "name": instrument_palette.display_name(item),
+              "folder": item.get("path"), "reason": f"hand-picked (was {previous})" if previous else "hand-picked",
+              "source": "user"}
+    drum_bus = None
+    if role == "drums":
+        # A reloaded kit lands after the drum bus; this puts the bus back after the kit.
+        try:
+            drum_bus = await _apply_drum_bus(style, ti)
+        except BridgeError as e:
+            drum_bus = {"track_index": ti, "role": "drum_bus", "action": "failed", "error": str(e)}
+    return {"ok": True, "result": result, "previous": previous, "drum_bus": drum_bus}
 
 
 class _DrumMapCache:

@@ -230,6 +230,74 @@ def rank_candidates(pool: list[dict], role: str, style: str, prompt: str | None 
     return [it for _, it in scored[:limit]]
 
 
+def _matched_words(item: dict, role: str, profile: dict, prompt_words: list[str]) -> dict[str, list[str]]:
+    """
+    Which role/style/prompt words a preset's name hits, for grouping and display. Only the name
+    counts (the folder already says the role, and "Piano & Keys" would make every preset in it
+    a "keys" match), and words must start a word, so "arp" doesn't hit "Harpsichord".
+    """
+    name = display_name(item).lower()
+    pos_role, neg_role = ROLE_WORDS.get(role, ([], []))
+    plus = profile.get("+", {})
+    style_words = plus.get(role, plus.get("chords", []) if role == "pad" else []) + plus.get("*", [])
+
+    def hits(words):
+        return sorted({w for w in words if re.search(r"(?<![a-z0-9])" + re.escape(w), name)})
+
+    return {
+        "style": hits(style_words),
+        "role": hits(pos_role),
+        "prompt": hits(prompt_words),
+        "clash": hits(neg_role + profile.get("-", []) + ["mpe"]),
+    }
+
+
+GROUP_LABELS = {
+    "prompt": "Matches your notes",
+    "style": "Best for {style}",
+    "role": "Solid {role} sounds",
+    "other": "Other {role} sounds",
+    "clash": "Probably clashes with {style}",
+}
+
+
+def group_candidates(pool: list[dict], role: str, style: str, prompt: str | None = None, *,
+                     per_group: int = 40, query: str | None = None) -> list[dict]:
+    """
+    A role's browser pool grouped by how well each sound fits the style, best first, for a
+    hand-picked swap. Deterministic (no jitter). An item goes in its best group:
+    prompt match > style match > role match > other; anything hitting a clash word goes last.
+    """
+    profile = style_profile(style)
+    words = [w for w in re.findall(r"[a-z0-9]+", (prompt or "").lower()) if len(w) > 2]
+    q = (query or "").strip().lower()
+    buckets: dict[str, list[tuple[float, dict]]] = {k: [] for k in GROUP_LABELS}
+    for it in pool:
+        if q and q not in f"{it.get('name', '')} {it.get('path', '')}".lower():
+            continue
+        m = _matched_words(it, role, profile, words)
+        key = "clash" if m["clash"] else "prompt" if m["prompt"] else "style" if m["style"] else "role" if m["role"] else "other"
+        row = {
+            "name": display_name(it), "file": it.get("name"), "folder": it.get("path"), "uri": it.get("uri"),
+            "tags": list(dict.fromkeys(m["prompt"] + m["style"] + m["role"])),
+            "clash": m["clash"],
+        }
+        buckets[key].append((_score(it, role, profile, words), row))
+    role_label = role if role != "fx" else "FX"
+    out = []
+    for key, rows in buckets.items():
+        if not rows:
+            continue
+        rows.sort(key=lambda t: (-t[0], t[1]["name"].lower()))
+        out.append({
+            "key": key,
+            "label": GROUP_LABELS[key].format(style=style.replace("_", " ") or "this style", role=role_label),
+            "total": len(rows),
+            "items": [r for _, r in rows[:per_group]],
+        })
+    return out
+
+
 def heuristic_palette(candidates: dict[str, list[dict]]) -> dict[str, dict]:
     picks: dict[str, dict] = {}
     for role, cands in candidates.items():
@@ -290,6 +358,55 @@ async def ai_palette(
         if item is not None:
             picks[role] = {"item": item, "reason": str(c.get("reason") or "AI choice"), "source": "ai"}
     return picks, {"ok": True, "missing": sorted(set(candidates) - set(picks))}
+
+
+AI_TOP_PICKS_SYSTEM = (
+    "You are an expert electronic music producer choosing a sound for one track in Ableton Live. "
+    "Pick the 3 best candidates for this role and style, best first. They must sit well with the "
+    "instruments already on the other tracks: complementary frequency range and one shared character. "
+    "Pick 3 different-sounding options so the producer has a real choice. Return STRICT JSON only: "
+    '{"picks": [{"id": <number>, "reason": "<one short sentence>"}]}'
+)
+AI_TOP_PICKS_CANDIDATES = 40
+
+
+async def ai_top_picks(
+    call_ai: Callable[[str, str, float], Awaitable[tuple]],
+    *, groups: list[dict], role: str, style: str, prompt: str | None,
+    others: dict[str, str] | None = None, current: str | None = None, count: int = 3, temperature: float = 0.5,
+) -> tuple[list[dict], dict]:
+    """
+    Up to `count` AI picks for one role, drawn from group_candidates() output (clashes left out,
+    best groups first). Returns (rows from the groups with a "reason" added, meta).
+    """
+    rows = [it for g in groups if g["key"] != "clash" for it in g["items"]][:AI_TOP_PICKS_CANDIDATES]
+    if not rows:
+        return [], {"ok": False, "error": "no_candidates"}
+    table = {n: r for n, r in enumerate(rows, 1)}
+    user = (
+        f"Style: {style}\n"
+        f"Style character: {style_profile(style).get('text') or 'use your judgement for this style'}\n"
+        f"Role: {ROLE_POOLS[role]['label']}\n"
+        f"Currently on this track: {current or 'nothing'}\n"
+        f"Other tracks: {json.dumps(others or {})}\n"
+        f"Producer's notes: {prompt or 'none'}\n\n"
+        f"Candidates: {json.dumps([{'id': n, 'name': r['name'], 'folder': r['folder']} for n, r in table.items()])}"
+    )
+    obj, meta = await call_ai(AI_TOP_PICKS_SYSTEM, user, float(temperature))
+    if not meta.get("ok") or not isinstance(obj, dict) or not isinstance(obj.get("picks"), list):
+        return [], meta if not meta.get("ok") else {"ok": False, "error": "bad_ai_response"}
+    out, seen = [], set()
+    for p in obj["picks"]:
+        try:
+            n = int(p.get("id"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if n in table and n not in seen:
+            seen.add(n)
+            out.append({**table[n], "reason": str(p.get("reason") or "")})
+        if len(out) >= count:
+            break
+    return out, {"ok": bool(out), "candidates": len(rows), **({} if out else {"error": "no_valid_picks"})}
 
 
 def default_kit(pool: list[dict]) -> dict | None:

@@ -151,6 +151,7 @@ class Song(Observable):
         super().__init__()
         self.tempo, self.is_playing, self.current_song_time = 120.0, False, 0.0
         self.signature_numerator = self.signature_denominator = 4
+        self.clip_trigger_quantization = 4  # 1 bar, Live's default
         self.scenes = [Scene() for _ in range(2)]
         self.tracks = [Track("1-MIDI", 2), Track("2-MIDI", 2)]
         self.return_tracks, self.master_track = [], Track("Master", 0)

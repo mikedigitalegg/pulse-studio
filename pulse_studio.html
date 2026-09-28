@@ -517,6 +517,11 @@
       .chip { display: inline-block; padding: 1px 8px; margin: 0 4px 4px 0; border-radius: 999px; background: var(--bg-input); border: 1px solid var(--border); font-size: 12px; }
       .chip.ok { color: var(--success); border-color: rgba(16, 185, 129, 0.35); }
       .chip.no { color: var(--text-muted); text-decoration: line-through; }
+      .swap-group summary { cursor: pointer; padding: 4px 0; font-weight: 600; }
+      .swap-item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+      .swap-item .swap-name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+      .swap-item button { padding: 2px 10px; font-size: 12px; }
+      .swap-item.current { background: var(--bg-input); }
       .kv { display: grid; grid-template-columns: 160px 1fr; gap: 6px 12px; font-size: 13px; }
       .kv dt { color: var(--text-muted); }
       .kv dd { margin: 0; }
@@ -677,6 +682,9 @@
       <div class="nav-menu">
         <div class="nav-item active" data-view="compose" onclick="switchView('compose')">
           <span>Compose</span>
+        </div>
+        <div class="nav-item" data-view="instruments" onclick="switchView('instruments')">
+          <span>Instruments</span>
         </div>
         <div class="nav-item" data-view="knowledge" onclick="switchView('knowledge')">
           <span>Styles</span>
@@ -901,8 +909,8 @@
                 <label style="font-size: 13px;"><input type="checkbox" id="trackReplaceInstruments"> Replace instruments already on the Pulse tracks</label>
               </div>
               <div>
-                <label class="control-label">Instrument Prompt (optional)</label>
-                <input id="trackInstrumentPrompt" type="text" placeholder="e.g. modern peak-time techno, clean and punchy">
+                <label class="control-label">Sound Notes &amp; Swapping</label>
+                <button type="button" class="secondary" style="font-size: 12px;" onclick="switchView('instruments')">Open Instruments page</button>
               </div>
             </div>
   
@@ -915,7 +923,6 @@
               <button id="trackGenerate" class="primary" data-busy-text="Generating...">Generate Full Track</button>
               <button id="trackAutoPlay" class="secondary" title="Loop the playlist below in Live">Play arrangement</button>
               <button id="trackAutoStop" class="secondary">Stop arrangement</button>
-              <button id="trackRepick" class="secondary" data-busy-text="Picking..." title="Choose a new set of instruments for all Pulse tracks without regenerating clips">Re-pick Instruments</button>
             </div>
             
             <div class="row" style="margin-bottom: 16px;">
@@ -941,7 +948,7 @@
   
             <div style="margin-top: 12px;">
               <label class="control-label">Instruments</label>
-              <div id="trackInstrumentDebug" style="font-size: 13px;"><span class="muted">Generate a track or re-pick to choose instruments.</span></div>
+              <div id="composeInstrumentSummary" style="font-size: 13px;" class="muted">Instruments are chosen when you generate. See and swap them on the <a href="#" onclick="switchView('instruments'); return false;">Instruments page</a>.</div>
             </div>
           </div>
         </div>
@@ -1206,6 +1213,16 @@
               <span class="perf-move-desc">Echoes the next beat of stabs, chords, vox</span>
               <kbd class="kc">V</kbd>
             </button>
+            <button id="btnTailOut" class="perf-move" title="Everything into the reverb for half a bar, then only the tail rings until the next scene lands 2 bars on (C)">
+              <span class="perf-move-name">Reverb Tail Out</span>
+              <span class="perf-move-desc">Rings out into the next scene over 2 bars</span>
+              <kbd class="kc">C</kbd>
+            </button>
+            <button id="btnFill" class="perf-move" title="A one-bar snare roll on the drums from the next bar, then the next scene (X)">
+              <span class="perf-move-name">Fill → Next</span>
+              <span class="perf-move-desc">Snare roll for a bar, then the next scene</span>
+              <kbd class="kc">X</kbd>
+            </button>
             <button id="btnFadeOut" class="perf-move perf-move-end" title="Fade the Pulse tracks out over 4 seconds, then stop">
               <span class="perf-move-name">Fade Out &amp; Stop</span>
               <span class="perf-move-desc">Ends the set over 4 seconds · press twice</span>
@@ -1299,6 +1316,46 @@
       </div>
 
       <!-- SAMPLES VIEW -->
+      <div id="view-instruments" class="view-section">
+        <h2>Instruments</h2>
+
+        <div class="card">
+          <h4>Pulse Tracks</h4>
+          <p class="control-label">What's on each Pulse track. Re-pick chooses a fresh set for the style without touching your clips; Swap lets you pick one track's sound yourself.</p>
+          <div class="grid-3" style="margin: 12px 0; align-items: end;">
+            <div>
+              <label class="control-label" for="instStyle">Style</label>
+              <select id="instStyle"><option value="">Loading styles…</option></select>
+            </div>
+            <div style="grid-column: span 2;">
+              <label class="control-label" for="trackInstrumentPrompt">Sound notes (optional, also used by Generate)</label>
+              <input id="trackInstrumentPrompt" type="text" placeholder="e.g. modern peak-time techno, clean and punchy">
+            </div>
+          </div>
+          <div class="row" style="margin-bottom: 12px;">
+            <button id="trackRepick" class="primary" data-busy-text="Picking..." title="Choose a new set of instruments for all Pulse tracks without regenerating clips">Re-pick All Instruments</button>
+            <button id="instRefresh" class="secondary" data-busy-text="Refreshing...">Refresh</button>
+          </div>
+          <div id="trackInstrumentDebug" style="font-size: 13px;"><span class="muted">Loading…</span></div>
+        </div>
+
+        <div class="card">
+          <h4>Swap an Instrument</h4>
+          <p class="control-label">Sounds for the track, grouped by how well they fit the style. Ask AI picks the 3 best to go with your other tracks.</p>
+          <div class="row" style="margin: 12px 0 8px; gap: 8px; flex-wrap: wrap;">
+            <select id="swapRole" style="max-width: 140px;"></select>
+            <input id="swapSearch" type="text" placeholder="Filter by name or folder" style="flex: 1; min-width: 160px;">
+            <button id="swapBrowse" class="secondary" data-busy-text="Loading...">Show sounds</button>
+            <button id="swapAskAi" class="secondary" data-busy-text="Asking..." title="Let the AI pick the 3 best sounds for this track, given the style, your notes and the other tracks">Ask AI</button>
+          </div>
+          <div id="swapCurrent" class="muted" style="font-size: 12px; margin-bottom: 6px;"></div>
+          <div id="swapPicker">
+            <div id="swapAi" style="font-size: 13px; margin-bottom: 8px;"></div>
+            <div id="swapGroups" style="font-size: 13px; max-height: 520px; overflow-y: auto;"></div>
+          </div>
+        </div>
+      </div>
+
       <div id="view-samples" class="view-section">
         <h2>Samples</h2>
 
@@ -1733,6 +1790,12 @@
           renderPerform();
           perfPollAuto();
         }
+        if (v === 'instruments') {
+          const inst = document.getElementById('instStyle');
+          const common = document.getElementById('commonStyle');
+          if (inst && common && common.value) inst.value = common.value;
+          loadCurrentInstruments();
+        }
         if (v === 'samples') {
           smpLoadList();
           smpSearchLibrary();
@@ -1831,7 +1894,7 @@
 
       // Every style menu in the page is built from knowledge/styles.json, so a style added
       // on the Styles view shows up everywhere without touching this file.
-      const STYLE_SELECT_IDS = ["commonStyle", "mcpAiStyle", "newStyleBaseA", "newStyleBaseB", "ttsPackStyle"];
+      const STYLE_SELECT_IDS = ["commonStyle", "instStyle", "mcpAiStyle", "newStyleBaseA", "newStyleBaseB", "ttsPackStyle"];
       const STYLE_PREF_KEY = "pulse.style";
 
       function _loadPref(key) {
@@ -1856,7 +1919,7 @@
         STYLE_SELECT_IDS.forEach((id) => {
           const el = document.getElementById(id);
           if (!el) return;
-          const current = el.value || (id === "commonStyle" || id === "ttsPackStyle" ? _loadPref(STYLE_PREF_KEY) : "");
+          const current = el.value || (id === "commonStyle" || id === "instStyle" || id === "ttsPackStyle" ? _loadPref(STYLE_PREF_KEY) : "");
           el.innerHTML = html;
           if (id === "newStyleBaseB") el.insertAdjacentHTML("afterbegin", `<option value="">(none)</option>`);
           if (current && keys.includes(current)) el.value = current;
@@ -2522,21 +2585,163 @@
           el.innerHTML = '<span class="muted">Instruments were not changed.</span>' + drumBusLine(drumBus) + returnsLine(returns);
           return;
         }
-        const badge = { kept: "kept", loaded: "loaded", fallback: "fallback", failed: "failed" };
-        el.innerHTML = `<table class="live-table"><thead><tr><th style="width: 70px;">Track</th><th style="width: 80px;">Role</th><th>Instrument</th><th>Why</th></tr></thead><tbody>${
+        const badge = { kept: "kept", loaded: "loaded", fallback: "fallback", failed: "failed", current: "on track" };
+        el.innerHTML = `<table class="live-table"><thead><tr><th style="width: 70px;">Track</th><th style="width: 80px;">Role</th><th>Instrument</th><th>Why</th><th style="width: 70px;"></th></tr></thead><tbody>${
           results.map((r) => {
             const action = r.action || (r.ok ? "loaded" : "failed");
             const name = r.name || (r.detail && r.detail.choice && r.detail.choice.name) || (r.detail && r.detail.device) || "–";
             const why = r.action === "kept"
               ? (r.warning || "Already on the track (kept).")
-              : (r.reason || r.error || (r.detail && r.detail.reason) || "");
-            const cls = action === "failed" ? "no" : action === "kept" ? "" : "ok";
+              : r.action === "current"
+                ? (r.warning || (!r.name ? "Empty: Re-pick or Swap to add a sound." : r.picked_for ? `Picked by Pulse for ${String(r.picked_for).replace(/_/g, " ")}.` : ""))
+                : (r.reason || r.error || (r.detail && r.detail.reason) || "");
+            const cls = action === "failed" ? "no" : action === "kept" || action === "current" ? "" : "ok";
             return `<tr><td class="muted">${Number(r.track_index) + 1}</td><td>${escapeHtml(ROLE_LABELS[r.role] || r.role || "")}</td>
-              <td>${escapeHtml(name)} <span class="chip ${cls}">${escapeHtml(badge[action] || action)}</span></td>
-              <td class="muted">${escapeHtml(why)}</td></tr>`;
+              <td>${escapeHtml(name)} ${action === "current" ? "" : `<span class="chip ${cls}">${escapeHtml(badge[action] || action)}</span>`}</td>
+              <td class="muted">${escapeHtml(why)}</td>
+              <td><button class="secondary swap-open" data-role="${escapeHtml(r.role || "")}" style="padding: 2px 10px; font-size: 12px;">Swap</button></td></tr>`;
           }).join("")
         }</tbody></table>` + drumBusLine(drumBus) + returnsLine(returns);
       }
+
+      // ---- Swap an instrument: a role's library sounds grouped by fit with the current style.
+      function instrumentPromptText() {
+        return [
+          (document.getElementById("trackInstrumentPrompt")?.value || "").trim(),
+          (document.getElementById("commonPrompt")?.value || "").trim(),
+        ].filter(Boolean).join("\n\n");
+      }
+
+      (function initSwapRoles() {
+        const sel = document.getElementById("swapRole");
+        if (sel) sel.innerHTML = Object.entries(ROLE_LABELS).map(([k, v]) => `<option value="${k}">${escapeHtml(v)}</option>`).join("");
+      })();
+
+      function swapItemRow(it, cur, extra) {
+        return `
+                <div class="swap-item ${cur && it.name === cur.replace(/\.(adg|adv)$/i, "") ? "current" : ""}">
+                  <span class="swap-name">${escapeHtml(it.name)} <span class="muted" style="font-size: 11px;">${escapeHtml(it.folder || "")}</span>
+                    ${(it.tags || []).slice(0, 4).map((t) => `<span class="chip ok">${escapeHtml(t)}</span>`).join("")}
+                    ${(it.clash || []).slice(0, 3).map((t) => `<span class="chip no">${escapeHtml(t)}</span>`).join("")}${extra || ""}</span>
+                  <button class="secondary swap-load" data-uri="${escapeHtml(it.uri)}" data-name="${escapeHtml(it.name)}" data-busy-text="Loading...">Load</button>
+                </div>`;
+      }
+
+      function swapRequestBody() {
+        return {
+          style: (document.getElementById("commonStyle")?.value || "").trim(),
+          role: document.getElementById("swapRole")?.value || "drums",
+          prompt: instrumentPromptText() || null,
+          query: (document.getElementById("swapSearch")?.value || "").trim() || null,
+        };
+      }
+
+      async function askAiForSwap() {
+        const btn = document.getElementById("swapAskAi");
+        const aiEl = document.getElementById("swapAi");
+        const body = swapRequestBody();
+        setBusy(btn, true);
+        aiEl.innerHTML = '<span class="muted">Asking the AI for the 3 best sounds...</span>';
+        try {
+          const resp = await post("/instruments/suggest", body);
+          if (!resp || !resp.ok) throw new Error(resp && (resp.hint || resp.error) || "suggest_failed");
+          if (!document.getElementById("swapGroups").innerHTML.trim()) await loadSwapCandidates();
+          const cur = (document.getElementById("swapCurrent")?.dataset.current) || "";
+          const others = Object.entries(resp.others || {}).map(([r, n]) => `${ROLE_LABELS[r] || r}: ${n}`).join(", ");
+          aiEl.innerHTML = `<details class="swap-group" open>
+              <summary>AI top picks for ${escapeHtml(ROLE_LABELS[resp.role] || resp.role)} <span class="muted">(${escapeHtml((resp.style || "").replace(/_/g, " "))}${others ? `, to fit ${escapeHtml(others)}` : ""})</span></summary>
+              ${resp.picks.map((it, i) => swapItemRow(it, cur, `<div class="muted" style="font-size: 12px;">${i + 1}. ${escapeHtml(it.reason || "")}</div>`)).join("")}
+            </details>`;
+          log(`AI picks for ${ROLE_LABELS[resp.role] || resp.role}: ${resp.picks.map((p) => p.name).join(", ")}`);
+        } catch (e) {
+          aiEl.innerHTML = `<span class="muted">Ask AI failed: ${escapeHtml(e.message)}</span>`;
+          log("Ask AI failed: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      }
+
+      async function loadCurrentInstruments() {
+        const el = document.getElementById("trackInstrumentDebug");
+        const btn = document.getElementById("instRefresh");
+        setBusy(btn, true);
+        try {
+          const resp = await get("/instruments/current");
+          if (!resp || !resp.ok) throw new Error(resp && resp.error === "bridge_not_connected" ? "Live isn't connected (PulseBridge)." : (resp && resp.error) || "failed");
+          renderInstrumentResults(el, resp.results);
+        } catch (e) {
+          el.innerHTML = `<span class="muted">${escapeHtml(e.message)}</span>`;
+        } finally {
+          setBusy(btn, false);
+        }
+      }
+      document.getElementById("instRefresh")?.addEventListener("click", loadCurrentInstruments);
+
+      async function loadSwapCandidates() {
+        const btn = document.getElementById("swapBrowse");
+        const groupsEl = document.getElementById("swapGroups");
+        const curEl = document.getElementById("swapCurrent");
+        const { style, role } = swapRequestBody();
+        setBusy(btn, true);
+        try {
+          const resp = await post("/instruments/candidates", swapRequestBody());
+          if (!resp || !resp.ok) throw new Error(resp && (resp.hint || resp.error) || "candidates_failed");
+          const cur = resp.current || "";
+          curEl.dataset.current = cur;
+          curEl.textContent = `Track ${resp.track_index + 1} (${ROLE_LABELS[role] || role}) has: ${cur || "nothing playable"}. ${resp.pool_size} sounds for this role, grouped for ${style || "no style"}.`;
+          if (!resp.groups.length) { groupsEl.innerHTML = '<span class="muted">No sounds match that filter.</span>'; return; }
+          groupsEl.innerHTML = resp.groups.map((g, gi) => `
+            <details class="swap-group" ${gi < 2 && g.key !== "clash" ? "open" : ""}>
+              <summary>${escapeHtml(g.label)} <span class="muted">(${g.total}${g.total > g.items.length ? `, top ${g.items.length} shown` : ""})</span></summary>
+              ${g.items.map((it) => swapItemRow(it, cur)).join("")}
+            </details>`).join("");
+        } catch (e) {
+          groupsEl.innerHTML = `<span class="muted">${escapeHtml(e.message)}</span>`;
+          log("Instrument list failed: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      }
+
+      document.getElementById("swapBrowse")?.addEventListener("click", loadSwapCandidates);
+      document.getElementById("swapAskAi")?.addEventListener("click", askAiForSwap);
+      document.getElementById("swapRole")?.addEventListener("change", () => {
+        document.getElementById("swapAi").innerHTML = "";
+        loadSwapCandidates();
+      });
+      document.getElementById("swapSearch")?.addEventListener("keydown", (e) => { if (e.key === "Enter") loadSwapCandidates(); });
+
+      document.getElementById("swapPicker")?.addEventListener("click", async (e) => {
+        const btn = e.target.closest(".swap-load");
+        if (!btn) return;
+        const role = document.getElementById("swapRole")?.value || "drums";
+        const style = (document.getElementById("commonStyle")?.value || "").trim();
+        setBusy(btn, true);
+        try {
+          const resp = await post("/instruments/swap", { style, role, uri: btn.dataset.uri });
+          if (!resp || !resp.ok) throw new Error(resp && (resp.hint || resp.detail || resp.error) || "swap_failed");
+          log(`${ROLE_LABELS[role] || role}: loaded ${resp.result.name}${resp.previous ? " (was " + resp.previous + ")" : ""}`);
+          await Promise.all([loadSwapCandidates(), loadCurrentInstruments()]);
+          document.querySelectorAll("#swapAi .swap-item").forEach((row) => {
+            row.classList.toggle("current", row.querySelector(".swap-load")?.dataset.uri === btn.dataset.uri);
+          });
+        } catch (err) {
+          log("Swap failed: " + err.message);
+          alert("Swap failed: " + err.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("trackInstrumentDebug")?.addEventListener("click", (e) => {
+        const btn = e.target.closest(".swap-open");
+        if (!btn) return;
+        const sel = document.getElementById("swapRole");
+        if (sel) sel.value = btn.dataset.role;
+        document.getElementById("swapAi").innerHTML = "";
+        loadSwapCandidates();
+        document.getElementById("swapRole")?.closest(".card")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
 
       document.getElementById("trackRepick")?.addEventListener("click", async () => {
         const btn = document.getElementById("trackRepick");
@@ -2595,6 +2800,12 @@
         renderTrackPlaylist(arr);
 
         if (instEl) renderInstrumentResults(instEl, resp && resp.instruments ? resp.instruments.applied : null, resp && resp.instruments ? resp.instruments.drum_bus : null, resp && resp.instruments ? resp.instruments.returns : null);
+        const sumEl = document.getElementById("composeInstrumentSummary");
+        const applied = resp && resp.instruments && Array.isArray(resp.instruments.applied) ? resp.instruments.applied : [];
+        if (sumEl && applied.length) {
+          const parts = applied.map((r) => `${ROLE_LABELS[r.role] || r.role}: ${r.name || r.action || "–"}`);
+          sumEl.innerHTML = `${escapeHtml(parts.join(" · "))}. <a href="#" onclick="switchView('instruments'); return false;">Details and swapping</a>`;
+        }
       }
 
       async function startFullTrackAutoplay(arrangement, startSlotIndex, barsPerScene, clipBars) {
@@ -2941,6 +3152,18 @@
       document.getElementById("commonStyle")?.addEventListener("change", (ev) => {
         _savePref(STYLE_PREF_KEY, ev.target.value);
         renderCommonStyleSummary();
+        const inst = document.getElementById("instStyle");
+        if (inst) inst.value = ev.target.value;
+      });
+
+      // The Instruments page has its own Style box; it is the same setting as Compose's.
+      document.getElementById("instStyle")?.addEventListener("change", (ev) => {
+        const common = document.getElementById("commonStyle");
+        if (common) common.value = ev.target.value;
+        _savePref(STYLE_PREF_KEY, ev.target.value);
+        renderCommonStyleSummary();
+        document.getElementById("swapAi").innerHTML = "";
+        if (document.getElementById("swapGroups").innerHTML.trim()) loadSwapCandidates();
       });
 
       document.getElementById('kbStyleFilter')?.addEventListener('input', () => {
@@ -4133,6 +4356,7 @@
       // what's playing, queued and muted always matches Live.
       const PERF_PART_KEYS = ["KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI", "KeyO", "KeyP"];
       const PERF_VOX_KEYS = ["KeyA", "KeyS", "KeyD", "KeyF", "KeyG", "KeyH", "KeyJ", "KeyK"];
+      const PERF_MOVE_KEYS = { KeyN: "btnBreakdown", KeyV: "btnDelayThrow", KeyC: "btnTailOut", KeyX: "btnFill" };
       const PERF_MAX_SCENES = 32;
       const PERF_MAX_PARTS = 16;
       const perf = { plan: {}, scenesKey: "", partsKey: "", auto: null, autoTimer: null, fadeArmedUntil: 0, fadeTimer: null };
@@ -4514,6 +4738,42 @@
         }
       });
 
+      // The scene a transition lands on: the one already queued, the autopilot's next, or the
+      // one after what's playing. null when there's nothing after it.
+      function perfNextSceneIndex() {
+        const L = perfLive();
+        const st = perfSceneState((L && L.tracks) || []);
+        if (st.queued >= 0) return st.queued;
+        const autoNext = perfAutoNextScene();
+        if (autoNext && Number.isInteger(autoNext.scene_index)) return autoNext.scene_index;
+        const n = L && L.song ? int(L.song.num_scenes) : 0;
+        return st.playing >= 0 && st.playing + 1 < n ? st.playing + 1 : null;
+      }
+
+      // Moves that end on a scene launch take over from the autopilot, like a scene pad does.
+      async function perfTransition(btn, path, body, verb) {
+        const scene = perfNextSceneIndex();
+        const L = perfLive();
+        try {
+          if (scene !== null && perf.auto && perf.auto.running) await perfStopAuto("You took over: autopilot off.");
+          const r = await post(path, { ...body, scene_index: scene });
+          if (!r.ok) return perfMoveNote(btn, r.hint || r.error);
+          if (r.warning) log(r.warning);
+          perfMoveNote(btn, scene === null ? `${verb}, then back to this scene` : `${verb} into ${perfSceneName(L && L.song, scene)}`, 4000);
+        } catch (e) {
+          log(`${btn.querySelector(".perf-move-name").textContent} failed: ` + e.message);
+        }
+      }
+
+      document.getElementById("btnTailOut")?.addEventListener("click", () => {
+        const vox = pickedTrackIndex("vox");
+        perfTransition(document.getElementById("btnTailOut"), "/moves/tail_out", { bars: 2, feed_beats: 2, track_indices: Number.isInteger(vox) ? [vox] : [] }, "Tailing out");
+      });
+
+      document.getElementById("btnFill")?.addEventListener("click", () => {
+        perfTransition(document.getElementById("btnFill"), "/moves/fill", { kind: "snare" }, "Filling");
+      });
+
       document.getElementById("btnDelayThrow")?.addEventListener("click", async () => {
         const btn = document.getElementById("btnDelayThrow");
         const vox = pickedTrackIndex("vox");
@@ -4626,8 +4886,8 @@
         } else if (code === "KeyB") {
           const btn = document.getElementById("btnWashDrop");
           if (btn && !btn.disabled) { perfFlash(btn); btn.click(); }
-        } else if (code === "KeyN" || code === "KeyV") {
-          const btn = document.getElementById(code === "KeyN" ? "btnBreakdown" : "btnDelayThrow");
+        } else if (PERF_MOVE_KEYS[code]) {
+          const btn = document.getElementById(PERF_MOVE_KEYS[code]);
           if (btn) { perfFlash(btn); btn.click(); }
         } else if (code === "BracketLeft") {
           perfNudgeTempo(-1);
