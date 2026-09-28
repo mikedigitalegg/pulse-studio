@@ -1698,7 +1698,11 @@
 
     <script>
       // Same server that served the page; the fallback covers opening the file directly.
-      const API_BASE = location.protocol.startsWith("http") ? location.origin : "http://127.0.0.1:8005";
+      // Pulse serves the page only at /pulse_studio.html, so any other path means another
+      // server (e.g. an IDE's preview on :63342) is hosting it and can't answer the API.
+      const SERVED_BY_PULSE = location.protocol.startsWith("http") && location.pathname === "/pulse_studio.html";
+      const PULSE_URL = "http://127.0.0.1:8005/";
+      const API_BASE = SERVED_BY_PULSE ? location.origin : "http://127.0.0.1:8005";
       const logEl = document.getElementById("log");
 
       // --- Navigation Logic ---
@@ -6427,7 +6431,9 @@
           const text = $("livePillText");
           if (!pill || !text) return;
           let state, label;
-          if (!live.serverUp) {
+          if (!SERVED_BY_PULSE && !live.serverUp) {
+            state = "offline"; label = "Open 127.0.0.1:8005 instead";
+          } else if (!live.serverUp) {
             state = "offline"; label = "Server not reachable";
           } else if (live.serverOutdated) {
             state = "offline"; label = "Server out of date: restart it";
@@ -6464,6 +6470,10 @@
         }
 
         function setupHtml() {
+          if (!SERVED_BY_PULSE && !live.serverUp) {
+            return `<strong>This page wasn't opened from the Pulse Studio server.</strong> It's being served by <code>${escapeHtml(location.host || "a local file")}</code> (an editor's preview, or the file opened directly), which can't run the API. Start the server and open <a href="${PULSE_URL}">${PULSE_URL}</a>:<br>
+              <code>python -m uvicorn ableton_web_poc_server:app --host 127.0.0.1 --port 8005</code>`;
+          }
           if (live.serverOutdated) {
             return `<strong>This Pulse Studio server is running old code.</strong> It was started before the latest update, so the Live connection, events and instrument picker aren't available. Stop it (Ctrl+C in its terminal) and start it again:<br>
               <code>python -m uvicorn ableton_web_poc_server:app --host 127.0.0.1 --port 8005</code>`;
