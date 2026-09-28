@@ -22,9 +22,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pythonosc.dispatcher import Dispatcher
 from pythonosc.osc_server import ThreadingOSCUDPServer
+from dotenv import load_dotenv
 
 try:
     from ableton_track_creator import AbletonController
@@ -39,7 +40,8 @@ except ModuleNotFoundError as e:
 app = FastAPI(title="Ableton Web POC")
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
-app.mount("/static", StaticFiles(directory=APP_DIR), name="static")
+# Load repo-local env before reading OPENAI_API_KEY, ABLETON_MCP_*, etc.
+load_dotenv(os.path.join(APP_DIR, ".env"))
 RECORDINGS_DIR = os.path.join(APP_DIR, "recordings")
 os.makedirs(RECORDINGS_DIR, exist_ok=True)
 app.mount("/recordings", StaticFiles(directory=RECORDINGS_DIR), name="recordings")
@@ -47,12 +49,76 @@ AUDIO_DIR = os.path.join(APP_DIR, "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 app.mount("/audio_files", StaticFiles(directory=AUDIO_DIR), name="audio_files")
 
+PULSE_CANVAS_DIR = os.path.join(APP_DIR, "pulse_canvas")
+if os.path.isdir(PULSE_CANVAS_DIR):
+    app.mount(
+        "/pulse_canvas",
+        StaticFiles(directory=PULSE_CANVAS_DIR, html=True),
+        name="pulse_canvas",
+    )
+
+
+@app.get("/audio/wav/{filename}")
+def get_wav_file(filename: str):
+    name = os.path.basename(filename or "")
+    if not name.lower().endswith(".wav"):
+        return {"ok": False, "error": "unsupported_format"}
+    path = os.path.join(AUDIO_DIR, name)
+    if not os.path.exists(path):
+        path = os.path.join(RECORDINGS_DIR, name)
+    if not os.path.exists(path):
+        return {"ok": False, "error": "not_found"}
+    return FileResponse(path, media_type="audio/wav", filename=name)
+
 VOLCA_DRUM_TRACK_INDEX = 0
 PERC_TRACK_INDEX = 2
 STABS_TRACK_INDEX = 3
 FX_TRACK_INDEX = 4
 CHORDS_TRACK_INDEX = 5
 KNOWLEDGE_FILE = os.path.join(APP_DIR, "knowledge", "styles.json")
+
+_AUTOPLAY_LOCK = threading.Lock()
+_AUTOPLAY_THREAD: threading.Thread | None = None
+_AUTOPLAY_STOP: threading.Event | None = None
+_AUTOPLAY_STATE: dict = {"running": False, "current_step": None, "last_scene_index": None}
+
+PULSE_TRACK_PLAN: list[dict] = [
+    {"name": "Drums", "track_index": 0, "role": "drums", "q": "909 kit"},
+    {"name": "Bass", "track_index": 1, "role": "bass", "q": "bass"},
+    {"name": "Perc", "track_index": PERC_TRACK_INDEX, "role": "drums", "q": "perc"},
+    {"name": "Stabs", "track_index": STABS_TRACK_INDEX, "role": "stabs", "q": "stab"},
+    {"name": "FX", "track_index": FX_TRACK_INDEX, "role": "pads", "q": "pad"},
+    {"name": "Chords", "track_index": CHORDS_TRACK_INDEX, "role": "pads", "q": "pad"},
+]
+
+
+def _pulse_required_track_count() -> int:
+    # Track count is derived from the highest referenced track_index.
+    mx = 0
+    for item in PULSE_TRACK_PLAN:
+        try:
+            mx = max(mx, int(item.get("track_index")))
+        except Exception:
+            continue
+    return int(mx) + 1
+
+
+def _pulse_default_track_indices() -> list[int]:
+    out: list[int] = []
+    for item in PULSE_TRACK_PLAN:
+        try:
+            out.append(int(item.get("track_index")))
+        except Exception:
+            pass
+    # Preserve order but remove duplicates.
+    seen: set[int] = set()
+    uniq: list[int] = []
+    for i in out:
+        if i in seen:
+            continue
+        seen.add(i)
+        uniq.append(i)
+    return uniq
 
 ABLETON_MCP_HOST = os.environ.get("ABLETON_MCP_HOST", "127.0.0.1")
 ABLETON_MCP_PORT = int(os.environ.get("ABLETON_MCP_PORT", "9877"))
@@ -81,6 +147,18 @@ class GenerateVoicePackLinesRequest(BaseModel):
     pack_id: str
     count: int = 12
     seed: int | None = None
+
+
+class AutoplayStep(BaseModel):
+    scene_index: int
+    repeats: int = 1
+
+
+class AutoplayStartRequest(BaseModel):
+    steps: list[AutoplayStep] = Field(default_factory=list)
+    bpm: float = 140.0
+    clip_bars: int = 8
+    loop: bool = True
 
 
 class ProcessAudioRequest(BaseModel):
@@ -501,11 +579,47 @@ def _fx_process_pcm(samples: list[int], *, fx: str, sample_rate: int, channels: 
     if fx == "clean":
         return samples
 
+    def _varispeed_resample(interleaved: list[int], *, ratio: float, ch: int) -> list[int]:
+        r = float(ratio)
+        if r <= 0.0:
+            return interleaved
+
+        frames_in = int(len(interleaved) // max(1, ch))
+        if frames_in < 2:
+            return interleaved
+
+        frames_out = int(frames_in / r)
+        if frames_out < 2:
+            frames_out = 2
+
+        out: list[int] = [0] * (frames_out * ch)
+        for n in range(frames_out):
+            src = n * r
+            i0 = int(src)
+            if i0 >= frames_in - 1:
+                i0 = frames_in - 2
+            i1 = i0 + 1
+            t = src - float(i0)
+
+            base0 = i0 * ch
+            base1 = i1 * ch
+            baseo = n * ch
+            for c in range(ch):
+                s0 = float(interleaved[base0 + c])
+                s1 = float(interleaved[base1 + c])
+                y = s0 + (s1 - s0) * t
+                out[baseo + c] = _clamp16(y)
+        return out
+
     out: list[int] = []
 
     ch = int(channels) if int(channels) > 0 else 1
     if ch > 8:
         ch = 8
+
+    if fx in {"chipmunk", "chipmunk_house"}:
+        ratio = 2.0 ** (7.0 / 12.0)
+        samples = _varispeed_resample(samples, ratio=ratio, ch=ch)
 
     # Simple 1-pole high-pass and low-pass filters for "telephone" band-limiting.
     # These are intentionally lightweight and stable.
@@ -594,6 +708,23 @@ def _fx_process_pcm(samples: list[int], *, fx: str, sample_rate: int, channels: 
     ducked_delay = make_delay(240.0, 0.35, 0.22, lp_hz=2400.0)
     tape_delay = make_delay(190.0, 0.25, 0.18, lp_hz=3200.0)
 
+    trem_phase = [0.0] * ch
+    def tremolo(x: float, c: int, *, rate_hz: float, depth: float) -> float:
+        r = float(rate_hz)
+        if r <= 0.0:
+            return x
+        d = float(depth)
+        if d < 0.0:
+            d = 0.0
+        if d > 1.0:
+            d = 1.0
+        trem_phase[c] += (2.0 * math.pi * r) / max(1.0, float(sample_rate))
+        if trem_phase[c] > 2.0 * math.pi:
+            trem_phase[c] -= 2.0 * math.pi
+        lfo = 0.5 * (1.0 + math.sin(trem_phase[c]))
+        gain = (1.0 - d) + d * lfo
+        return x * gain
+
     for i, s in enumerate(samples):
         c = i % ch
         x = float(s) / 32768.0
@@ -667,6 +798,32 @@ def _fx_process_pcm(samples: list[int], *, fx: str, sample_rate: int, channels: 
             x = highpass(x, c)
             x = soft_clip(x, 1.15)
             x *= 0.99
+
+        elif fx in {"chipmunk", "chipmunk_house"}:
+            x = highpass(x, c)
+            x = soft_clip(x, 1.55)
+            x = room_verb(x, c)
+            x = ducked_delay(x, c)
+            x *= 0.96
+
+        elif fx in {"deep", "monster", "sub", "demon"}:
+            x = lowpass(x, c)
+            x = soft_clip(x, 2.6)
+            x = warehouse_verb(x, c)
+            x *= 0.9
+
+        elif fx in {"robot", "ringmod", "ring"}:
+            x = highpass(x, c)
+            x = lowpass(x, c)
+            x = soft_clip(x, 2.2)
+            x = chorus_delay(x, c)
+            x *= 0.92
+
+        elif fx in {"tremolo", "stutter", "gate"}:
+            x = highpass(x, c)
+            x = tremolo(x, c, rate_hz=10.0, depth=0.85)
+            x = soft_clip(x, 1.7)
+            x *= 0.95
 
         out.append(_clamp16(x * 32768.0))
 
@@ -1147,6 +1304,60 @@ DRUM_KIT_TEST_NAME = "909 Core Kit"
 BASS_DEVICE_TEST_NAME = "Basic 303 Bass"
 
 
+def _style_name_blob(display_name: str, description: str, key: str) -> str:
+    return f"{display_name or ''} {description or ''} {key or ''}".lower()
+
+
+def _is_hard_dance_name(display_name: str, description: str, key: str) -> bool:
+    b = _style_name_blob(display_name, description, key)
+    if "liquid" in b and ("dnb" in b or "drum" in b):
+        return False
+    if any(w in b for w in ("gabber", "gabba", "hakkuh", "rotterdam", "frenchcore", "speedcore")):
+        return True
+    if "uptempo" in b and "hardcore" in b:
+        return True
+    if "hardcore" in b and "liquid" not in b and "melodic" not in b:
+        return True
+    if "happy hardcore" in b or "happycore" in b:
+        return True
+    return False
+
+
+def _is_dnb_name(display_name: str, description: str, key: str) -> bool:
+    b = _style_name_blob(display_name, description, key)
+    if "gabba" in b or "gabber" in b:
+        return False
+    return bool(re.search(r"\bdnb\b|drum\s+and\s+bass|drum\s*&\s*bass|\bjungle\b", b))
+
+
+def _style_cues_for_generation(style: str) -> str:
+    """Extra producer cues from knowledge base — passed to OpenAI drum/bass prompts."""
+    style_l = (style or "").strip().lower()
+    parts: list[str] = []
+    rec = STYLE_RECOMMENDATIONS.get(style_l) if isinstance(STYLE_RECOMMENDATIONS, dict) else None
+    if isinstance(rec, dict):
+        d = rec.get("drums")
+        b = rec.get("bass")
+        if d:
+            parts.append(f"Drum / groove cues (follow closely): {d}")
+        if b:
+            parts.append(f"Bass / low-end cues (follow closely): {b}")
+    bp = BASS_STYLE_PROFILE.get(style_l) if isinstance(BASS_STYLE_PROFILE, dict) else None
+    if isinstance(bp, dict):
+        ex = bp.get("explain")
+        if ex:
+            parts.append(f"Style bass profile intent: {ex}")
+    cfg = STYLE_CONFIG.get(style_l) if isinstance(STYLE_CONFIG, dict) else None
+    if isinstance(cfg, dict):
+        try:
+            t = float(cfg.get("tempo", 0) or 0)
+            if t > 0:
+                parts.append(f"Reference tempo from style definition: ~{t:.0f} BPM (inform energy; Live tempo may differ).")
+        except Exception:
+            pass
+    return "\n".join(parts)
+
+
 class _OSCState:
     def __init__(self):
         self.lock = threading.Lock()
@@ -1358,21 +1569,21 @@ class LabelScenesRequest(BaseModel):
 
 
 class EnsureTracksRequest(BaseModel):
-    min_tracks: int = 6
+    min_tracks: int = Field(default_factory=_pulse_required_track_count)
     insert_at_start: bool = False
     prefix: str = "PS-TRK"
 
 
 class LabelTracksRequest(BaseModel):
     start_index: int = 0
-    count: int = 6
+    count: int = Field(default_factory=_pulse_required_track_count)
     prefix: str = "PS-TRK"
     ensure_min_tracks: bool = False
 
 
 class FadeOutRequest(BaseModel):
     duration_ms: int = 4000
-    target_tracks: list[int] = [0, 1, 2, 3, 4]
+    target_tracks: list[int] = Field(default_factory=_pulse_default_track_indices)
 
 
 class WashDropRequest(BaseModel):
@@ -1554,7 +1765,7 @@ class GenerateFullTrackRequest(BaseModel):
     bars_per_scene: int = 1
     clip_bars: int = 8
     temperature: float = 0.7
-    apply_instruments: bool = False
+    apply_instruments: bool = True
     instrument_candidate_limit: int = 120
     instrument_prompt: str | None = None
     prompt: str | None = None
@@ -1613,7 +1824,7 @@ def clear_track_range(req: ClearTrackRangeRequest):
         if count > 64:
             count = 64
 
-        tracks = req.tracks if isinstance(req.tracks, list) and req.tracks else [0, 1, 2, 3, 4, CHORDS_TRACK_INDEX]
+        tracks = req.tracks if isinstance(req.tracks, list) and req.tracks else _pulse_default_track_indices()
 
         cleared = 0
         for slot in range(start, start + count):
@@ -1668,6 +1879,18 @@ def next_free_clip_slot(req: NextFreeClipSlotRequest):
         return {"ok": False, "error": str(e)}
 
 
+@app.get("/clips/find_free_slot")
+def clips_find_free_slot(track_index: int = 0, start_slot: int = 0, max_slots: int = 256):
+    # Backwards-compatible route (older UI used GET /clips/find_free_slot?track_index=0&start_slot=0)
+    return next_free_clip_slot(
+        NextFreeClipSlotRequest(
+            track_index=int(track_index),
+            start_slot_index=int(start_slot),
+            max_slots=int(max_slots),
+        )
+    )
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -1720,6 +1943,15 @@ def _infer_tempo(description: str, fallback: float):
                 return bpm
         except Exception:
             pass
+
+    if any(k in desc for k in ["speedcore", "frenchcore", "uptempo hardcore", "uptempo"]):
+        return min(220.0, max(200.0, fallback + 40.0))
+    if any(k in desc for k in ["gabber", "gabba", "hakkuh", "rotterdam hardcore"]):
+        return min(210.0, max(185.0, fallback + 45.0))
+    if "hardcore" in desc and "liquid" not in desc and "melodic hardcore" not in desc:
+        return min(200.0, max(150.0, fallback + 25.0))
+    if any(k in desc for k in ["drum and bass", "drum & bass", " dnb", "dnb ", "jungle"]):
+        return min(180.0, max(165.0, fallback - 5.0 if fallback > 150 else 174.0))
 
     # Very light heuristic
     if any(k in desc for k in ["fast", "hard", "peak time", "rave"]):
@@ -1789,6 +2021,10 @@ def _schedule_stop_clip_after_bars(*, track_index: int, clip_slot_index: int, ba
 
 def _infer_bass_rhythm(description: str, fallback: str):
     desc = (description or "").lower()
+    if any(k in desc for k in ["gabber", "gabba", "hardcore", "hakkuh", "frenchcore", "speedcore"]):
+        return "steady_16"
+    if any(k in desc for k in ["drum and bass", "drum & bass", "dnb", "jungle"]):
+        return "syncopated_16"
     if "swing" in desc or "shuffle" in desc:
         return "swingy_16"
     if "syncop" in desc:
@@ -1802,6 +2038,8 @@ def _infer_bass_rhythm(description: str, fallback: str):
 
 def _infer_density(description: str, fallback: str):
     desc = (description or "").lower()
+    if any(k in desc for k in ["gabber", "gabba", "hardcore", "frenchcore", "speedcore", "hakkuh"]):
+        return "high"
     if any(k in desc for k in ["minimal", "sparse", "space"]):
         return "low"
     if any(k in desc for k in ["busy", "dense", "complex", "intricate"]):
@@ -1819,6 +2057,90 @@ def _infer_scale(description: str, fallback: str):
     if "balkan" in desc or "gypsy" in desc:
         return "minor"
     return fallback
+
+
+def _apply_subgenre_heuristics_to_style_object(
+    obj: dict,
+    *,
+    display_name: str,
+    description: str,
+    key: str,
+) -> dict:
+    """Nudge tempo, bass profile, harmony, and recommendations toward real genre norms (esp. hard dance)."""
+    if not isinstance(obj, dict):
+        return obj
+    out = dict(obj)
+    hard = _is_hard_dance_name(display_name, description, key)
+    dnb = _is_dnb_name(display_name, description, key) and not hard
+
+    try:
+        t0 = float(out.get("tempo", 140.0))
+    except Exception:
+        t0 = 140.0
+
+    if hard:
+        floor = 200.0 if any(w in _style_name_blob(display_name, description, key) for w in ("speedcore", "frenchcore")) else 185.0
+        out["tempo"] = min(220.0, max(floor, t0))
+        bp = dict(out.get("bass_profile") or {})
+        bp["density"] = "high"
+        bp["rhythm"] = "steady_16"
+        bp["note_pool"] = "root_fifth_octave"
+        bp["explain"] = (
+            "Hard dance / gabber: bass is secondary to the kick—short sub tails, roots and fifths only, "
+            "no melodic wandering; leave headroom for distorted kick transients."
+        )
+        out["bass_profile"] = bp
+        rec = dict(out.get("recommendations") or {})
+        rec["drums"] = (
+            "Hard distorted 909-style kick as the main musical event; relentless 4/4 or classic gabber offbeat stomp; "
+            "fast 16th closed hats; aggressive snare/clap; industrial percussion—not house or techno swing."
+        )
+        rec["bass"] = (
+            "Minimal monotone sub under kicks; distorted or saturated; very few pitches—rumble on root, "
+            "no jazzy walks or busy acid lines."
+        )
+        out["recommendations"] = rec
+        hp = dict(out.get("harmony_profile") or {})
+        hp["progressions"] = [
+            {"name": "tonic-stomp", "degrees": [1, 1, 1, 1]},
+            {"name": "i-bVII-stomp", "degrees": [1, 7, 1, 7]},
+        ]
+        out["harmony_profile"] = hp
+    elif dnb:
+        out["tempo"] = min(180.0, max(165.0, t0 if 165.0 <= t0 <= 180.0 else 174.0))
+        bp = dict(out.get("bass_profile") or {})
+        bp["density"] = "high"
+        bp["rhythm"] = "syncopated_16"
+        ex = str(bp.get("explain") or "").strip()
+        bp["explain"] = ex or "DnB: rolling syncopated bass weight; anchor tonic; work with breakbeat drums."
+        out["bass_profile"] = bp
+        rec = dict(out.get("recommendations") or {})
+        if not str(rec.get("drums") or "").strip():
+            rec["drums"] = "Breakbeat-influenced kicks; snare placements typical of DnB; space for sub."
+        if not str(rec.get("bass") or "").strip():
+            rec["bass"] = "Reese or sub bass; syncopation; keep harmonic movement minimal."
+        out["recommendations"] = rec
+
+    return out
+
+
+def _openai_extra_instructions_for_new_style(display_name: str, description: str, key: str) -> str:
+    parts: list[str] = [
+        "The recommendations.drums and recommendations.bass strings are used as explicit cues for later drum/bass AI steps—"
+        "write concrete production detail (kick type, distortion, hat rate, snare character, sub vs mid bass), not vague genre labels.",
+        "bass_profile.explain must describe mix role and rhythmic intent for this genre (not generic text).",
+    ]
+    if _is_hard_dance_name(display_name, description, key):
+        parts.append(
+            "Hard dance / gabber / hardcore: prefer tempo 185–220 unless the user gave a different BPM in the description. "
+            "Emphasize distorted 909-style kicks, fast 16th hats, minimal harmony, and very simple bass that supports kicks."
+        )
+    elif _is_dnb_name(display_name, description, key):
+        parts.append(
+            "Drum & bass / jungle: prefer tempo ~170–180 unless the user specified otherwise. "
+            "Emphasize breakbeat-leaning drums and syncopated, sub-heavy bass."
+        )
+    return "\n".join(parts)
 
 
 def _generate_style_object(*, key: str, display_name: str, description: str, base_a: dict | None, base_b: dict | None, clip_slot: int):
@@ -1990,7 +2312,7 @@ async def _openai_generate_style_from_description(
     }
 
     system = (
-        "You are an expert music producer and music theorist. "
+        "You are an expert electronic music producer and music theorist. "
         "Generate a musical style definition as STRICT JSON only (no markdown, no prose). "
         "Return ONE JSON object matching this schema exactly: tempo, clip_slot, kit, harmony_profile, bass_profile, recommendations. "
         "Rules: tempo must be 40..240, clip_slot must be an integer, kit must be a short Ableton device name string. "
@@ -1999,12 +2321,14 @@ async def _openai_generate_style_from_description(
         "bass_profile.density must be one of: low, medium, high. "
         "bass_profile.rhythm must be one of: straight_16, syncopated_16, swingy_16, offbeat_8, steady_16, straight_8. "
         "bass_profile.scale should be 'minor' or 'major'. "
-        "Ensure the result is stylistically coherent and playable. "
+        "Match real club genres: hard dance uses high BPM and kick-driven grooves; DnB uses breakbeat feel and rolling bass; "
+        "house/techno use club tempos and appropriate hat swing. "
         "Do not invent extra keys."
     )
 
     base_a_json = base_a if isinstance(base_a, dict) else None
     base_b_json = base_b if isinstance(base_b, dict) else None
+    extra = _openai_extra_instructions_for_new_style(display_name, description, key)
 
     user = (
         f"Create a NEW style definition.\n"
@@ -2016,6 +2340,7 @@ async def _openai_generate_style_from_description(
         "If base styles are provided, blend them in a sensible way, but prioritize the user description. "
         "Apply music theory rules appropriate to the described genre fusion. "
         "Output should be compatible with a minor/major degree-based harmony engine (degrees 1..7).\n\n"
+        f"Additional instructions:\n{extra}\n\n"
         f"If you need a template, follow this shape: {json.dumps(schema)}\n\n"
         f"Base style A JSON (optional): {json.dumps(base_a_json) if base_a_json else 'null'}\n\n"
         f"Base style B JSON (optional): {json.dumps(base_b_json) if base_b_json else 'null'}"
@@ -2080,6 +2405,13 @@ async def generate_style_from_description(req: GenerateStyleFromDescriptionReque
             base_b=base_b,
             clip_slot=clip_slot,
         )
+
+    obj = _apply_subgenre_heuristics_to_style_object(
+        obj,
+        display_name=display_name,
+        description=desc,
+        key=key,
+    )
 
     # Ensure final validity
     valid, vmeta = _validate_style_object(obj)
@@ -2470,6 +2802,128 @@ def fire_clip(req: FireClipRequest):
 def fire_scene(req: FireSceneRequest):
     ctrl.fire_scene(req.scene_index)
     return {"ok": True, "scene_index": req.scene_index}
+
+
+def _autoplay_worker(*, steps: list[dict], bpm: float, clip_bars: int, loop: bool, stop_event: threading.Event):
+    bpm_f = float(bpm or 140.0)
+    if bpm_f <= 1.0:
+        bpm_f = 140.0
+    clip_bars_i = int(clip_bars or 1)
+    if clip_bars_i < 1:
+        clip_bars_i = 1
+    if clip_bars_i > 128:
+        clip_bars_i = 128
+
+    sec_per_bar = (4.0 * 60.0) / bpm_f
+    scene_dur_s = max(0.25, sec_per_bar * float(clip_bars_i))
+
+    try:
+        ctrl.play()
+    except Exception:
+        pass
+
+    while not stop_event.is_set():
+        for idx, st in enumerate(steps):
+            if stop_event.is_set():
+                break
+            try:
+                scene_index = int(st.get("scene_index"))
+            except Exception:
+                continue
+            try:
+                repeats = int(st.get("repeats", 1) or 1)
+            except Exception:
+                repeats = 1
+            if repeats < 1:
+                repeats = 1
+            if repeats > 256:
+                repeats = 256
+
+            with _AUTOPLAY_LOCK:
+                _AUTOPLAY_STATE["current_step"] = int(idx)
+                _AUTOPLAY_STATE["last_scene_index"] = int(scene_index)
+
+            try:
+                ctrl.fire_scene(scene_index)
+            except Exception:
+                pass
+
+            sleep_s = min(3600.0, scene_dur_s * float(repeats))
+            end_at = time.time() + sleep_s
+            while (time.time() < end_at) and (not stop_event.is_set()):
+                time.sleep(0.1)
+
+        if not bool(loop):
+            break
+
+    with _AUTOPLAY_LOCK:
+        _AUTOPLAY_STATE["running"] = False
+        _AUTOPLAY_STATE["current_step"] = None
+
+
+@app.post("/autoplay/start")
+def autoplay_start(req: AutoplayStartRequest):
+    steps_in = req.steps or []
+    steps: list[dict] = []
+    for st in steps_in:
+        try:
+            scene_index = int(st.scene_index)
+        except Exception:
+            continue
+        try:
+            repeats = int(st.repeats or 1)
+        except Exception:
+            repeats = 1
+        if repeats < 1:
+            repeats = 1
+        if repeats > 256:
+            repeats = 256
+        steps.append({"scene_index": scene_index, "repeats": repeats})
+
+    if not steps:
+        return {"ok": False, "error": "empty_steps"}
+
+    global _AUTOPLAY_THREAD, _AUTOPLAY_STOP
+    with _AUTOPLAY_LOCK:
+        if _AUTOPLAY_STOP is not None:
+            _AUTOPLAY_STOP.set()
+        _AUTOPLAY_STOP = threading.Event()
+        _AUTOPLAY_STATE["running"] = True
+        _AUTOPLAY_STATE["current_step"] = 0
+        _AUTOPLAY_STATE["last_scene_index"] = None
+
+        th = threading.Thread(
+            target=_autoplay_worker,
+            kwargs={
+                "steps": steps,
+                "bpm": float(req.bpm or 140.0),
+                "clip_bars": int(req.clip_bars or 8),
+                "loop": bool(req.loop),
+                "stop_event": _AUTOPLAY_STOP,
+            },
+            daemon=True,
+        )
+        _AUTOPLAY_THREAD = th
+        th.start()
+
+    return {"ok": True, "running": True, "step_count": len(steps)}
+
+
+@app.post("/autoplay/stop")
+def autoplay_stop():
+    global _AUTOPLAY_STOP
+    with _AUTOPLAY_LOCK:
+        if _AUTOPLAY_STOP is not None:
+            _AUTOPLAY_STOP.set()
+        _AUTOPLAY_STATE["running"] = False
+        _AUTOPLAY_STATE["current_step"] = None
+    return {"ok": True, "running": False}
+
+
+@app.get("/autoplay/status")
+def autoplay_status():
+    with _AUTOPLAY_LOCK:
+        return {"ok": True, **_AUTOPLAY_STATE}
 
 
 @app.post("/scenes/ensure")
@@ -3130,10 +3584,11 @@ async def generate_full_track(req: GenerateFullTrackRequest):
 
     ensure_tracks_res = None
     try:
-        # Ensure tracks 0..CHORDS_TRACK_INDEX are MIDI (fresh Live sets often start with audio tracks).
-        ensure_tracks_res = _ensure_midi_tracks_prefix(int(CHORDS_TRACK_INDEX) + 1, prefix="PS-TRK")
+        needed_tracks = _pulse_required_track_count()
+        # Ensure tracks 0..needed_tracks-1 are MIDI (fresh Live sets often start with audio tracks).
+        ensure_tracks_res = _ensure_midi_tracks_prefix(int(needed_tracks), prefix="PS-TRK")
         # Auto-label first tracks so /tracks/ensure becomes idempotent (prefix check).
-        for i in range(0, int(CHORDS_TRACK_INDEX) + 1):
+        for i in range(0, int(needed_tracks)):
             try:
                 ctrl.send("/live/track/set/name", [int(i), f"PS-TRK-{(i + 1):02d}"])
                 time.sleep(0.01)
@@ -3144,6 +3599,8 @@ async def generate_full_track(req: GenerateFullTrackRequest):
 
     instrument_applied = None
     if bool(req.apply_instruments):
+        # New tracks/renames need a moment before load_device / browser loads reliably.
+        time.sleep(0.45)
         instrument_applied = await _choose_and_apply_instruments_for_full_track(
             style,
             prompt=req.instrument_prompt,
@@ -3318,7 +3775,11 @@ async def generate_full_track(req: GenerateFullTrackRequest):
             "requested": bool(req.apply_instruments),
             "candidate_limit": int(req.instrument_candidate_limit),
         },
-        "instruments": {"attempted": bool(req.apply_instruments), "applied": instrument_applied},
+        "instruments": {
+            "attempted": bool(req.apply_instruments),
+            "applied": instrument_applied,
+            "hints": _instrument_index_hints_from_applied(instrument_applied) if bool(req.apply_instruments) else [],
+        },
         "chords": {"track_index": CHORDS_TRACK_INDEX, "root_midi": chord_root, "progression": chord_prog},
         "scene_count": len(out_scenes),
         "scenes": out_scenes,
@@ -3457,6 +3918,24 @@ def apply_full_track_export(req: ApplyFullTrackExportRequest):
         applied.append({"slot": slot, "name": sc.get("name")})
 
     return {"ok": True, "applied_scene_count": len(applied), "applied": applied}
+
+
+@app.get("/cache/scene")
+def get_cached_scene(slot: int = 0):
+    s = int(slot)
+    if s < 0:
+        return {"ok": False, "error": "bad_slot"}
+    return {
+        "ok": True,
+        "slot": s,
+        "data": {
+            "drums": GEN_CACHE.get_drums(0, s),
+            "bass": GEN_CACHE.get_bass(1, s),
+            "perc": GEN_CACHE.get_perc(2, s),
+            "stabs": GEN_CACHE.get_stabs(3, s),
+            "fx": GEN_CACHE.get_fx(4, s),
+        },
+    }
 
 
 @app.post("/bass/tweak")
@@ -3830,8 +4309,21 @@ def mcp_index_rebuild(req: MCPRebuildBrowserIndexRequest):
         return {"ok": False, "error": str(e), "hint": "Make sure Ableton is running and AbletonMCP Remote Script is loaded."}
 
 
+def _default_osc_instrument_name_for_track(track_index: int) -> str:
+    """
+    When AbletonMCP + browser index are unavailable, load stock device class names
+    via AbletonOSC /live/track/load_device.
+
+    Env (optional): PULSE_OSC_DEFAULT_DRUM, PULSE_OSC_DEFAULT_MELODIC
+    """
+    t = int(track_index)
+    if t in (0, 2):
+        return str(os.environ.get("PULSE_OSC_DEFAULT_DRUM") or "Drum Rack")
+    return str(os.environ.get("PULSE_OSC_DEFAULT_MELODIC") or "Wavetable")
+
+
 async def _choose_and_apply_instruments_for_full_track(style: str, *, prompt: str | None, limit: int):
-    # Map Pulse Studio tracks -> roles.
+    # Map Pulse Studio tracks -> roles. Primary: MCP + browser index. Fallback: OSC class names.
     # Notes:
     # - Track 0 is drums
     # - Track 1 is bass
@@ -3839,30 +4331,70 @@ async def _choose_and_apply_instruments_for_full_track(style: str, *, prompt: st
     # - Track 3 is stabs (treated as stabs)
     # - Track 4 is fx (treated as pads/noise)
     # - Track 5 is chords (treated as pads)
-    plan = [
-        {"track_index": 0, "role": "drums", "q": "909 kit"},
-        {"track_index": 1, "role": "bass", "q": "bass"},
-        {"track_index": 2, "role": "drums", "q": "perc"},
-        {"track_index": 3, "role": "stabs", "q": "stab"},
-        {"track_index": 4, "role": "pads", "q": "pad"},
-        {"track_index": CHORDS_TRACK_INDEX, "role": "pads", "q": "pad"},
-    ]
+    plan = [{"track_index": int(x["track_index"]), "role": x["role"], "q": x.get("q")} for x in PULSE_TRACK_PLAN]
 
     applied: list[dict] = []
     for item in plan:
+        resp: dict | None = None
+        err: str | None = None
         try:
-            resp = await recommend_apply_from_index(RecommendFromBrowserIndexRequest(
-                style=style,
-                role=item["role"],
-                track_index=int(item["track_index"]),
-                q=item.get("q"),
-                limit=int(limit),
-                prompt=prompt,
-                temperature=0.25,
-            ))
-            applied.append({"track_index": item["track_index"], "role": item["role"], "ok": bool(resp.get("ok")), "detail": resp})
+            resp = await recommend_apply_from_index(
+                RecommendFromBrowserIndexRequest(
+                    style=style,
+                    role=item["role"],
+                    track_index=int(item["track_index"]),
+                    q=item.get("q"),
+                    limit=int(limit),
+                    prompt=prompt,
+                    temperature=0.25,
+                )
+            )
         except Exception as e:
-            applied.append({"track_index": item["track_index"], "role": item["role"], "ok": False, "error": str(e)})
+            err = str(e)
+            resp = {"ok": False, "error": err}
+
+        if isinstance(resp, dict) and resp.get("ok"):
+            applied.append(
+                {
+                    "track_index": item["track_index"],
+                    "role": item["role"],
+                    "ok": True,
+                    "detail": resp,
+                }
+            )
+            continue
+
+        try:
+            dev = _default_osc_instrument_name_for_track(int(item["track_index"]))
+            ctrl.load_device(int(item["track_index"]), dev)
+            time.sleep(0.2)
+            applied.append(
+                {
+                    "track_index": item["track_index"],
+                    "role": item["role"],
+                    "ok": True,
+                    "detail": {
+                        "ok": True,
+                        "source": "osc_class_fallback",
+                        "device": dev,
+                        "after_failure": resp if isinstance(resp, dict) else None,
+                        "after_error": err,
+                    },
+                }
+            )
+        except Exception as e2:
+            applied.append(
+                {
+                    "track_index": item["track_index"],
+                    "role": item["role"],
+                    "ok": False,
+                    "detail": resp,
+                    "error": err,
+                    "osc_fallback_error": str(e2),
+                }
+            )
+    # MCP may have returned ok with nothing on the device chain; fill any still-empty track.
+    _osc_fill_instruments_on_empty_tracks(plan, applied)
     return applied
 
 
@@ -4403,6 +4935,32 @@ async def recommend_instrument(req: RecommendInstrumentRequest):
             candidates = _normalize_candidates([str(x) for x in by_role])
 
     if not candidates:
+        # Final fallback: use cached Ableton browser index (names only).
+        # This is useful for UI flows that just want "a good pick" without providing candidates.
+        data = BROWSER_INDEX.get()
+        if not isinstance(data, dict):
+            disk = _load_browser_index_from_disk()
+            if isinstance(disk, dict):
+                BROWSER_INDEX.set(disk)
+                data = disk
+        items = data.get("items") if isinstance(data, dict) else None
+        if isinstance(items, list):
+            ranked = _rank_candidates_for_role(items, style=style.strip().lower(), role=role.strip().lower(), q=None, limit=80)
+            seen: set[str] = set()
+            out: list[str] = []
+            for it in ranked:
+                if not isinstance(it, dict):
+                    continue
+                nm = str(it.get("name") or "").strip()
+                if not nm:
+                    continue
+                if nm in seen:
+                    continue
+                seen.add(nm)
+                out.append(nm)
+            candidates = _normalize_candidates(out)
+
+    if not candidates:
         return {"ok": False, "error": "no_candidates", "hint": "Pass candidates[] or define instrument_catalog.<role> in knowledge/styles.json"}
 
     # Prefer AI when configured, otherwise use heuristic.
@@ -4425,6 +4983,19 @@ async def recommend_instrument(req: RecommendInstrumentRequest):
 
 @app.post("/instruments/recommend_apply")
 async def recommend_and_apply_instrument(req: RecommendAndApplyInstrumentRequest):
+    # If the UI didn't provide candidates, prefer the Ableton browser index path.
+    # This loads by browser URI (more reliable than name matching across presets/packs).
+    if not _normalize_candidates(req.candidates):
+        return await recommend_apply_from_index(RecommendFromBrowserIndexRequest(
+            style=req.style,
+            role=req.role,
+            track_index=req.track_index,
+            q=None,
+            limit=80,
+            prompt=req.prompt,
+            temperature=req.temperature,
+        ))
+
     rec = await recommend_instrument(RecommendInstrumentRequest(
         style=req.style,
         role=req.role,
@@ -4701,12 +5272,18 @@ async def _openai_generate_pattern(style: str, bars: int, prompt: str | None, te
         "lanes is an object mapping lane names to arrays of length bars*16. "
         "Each array element is an integer velocity 0..127 (0 means no hit). "
         "Valid lanes: kick, snare, clap, ch, oh, perc1, perc2. "
-        "Keep it musical and stylistically correct. Prefer sparse patterns for beginners."
+        "Match the style: hard dance / gabber / hardcore often needs dense kicks and fast hats; minimal techno can stay sparse."
     )
+
+    rec = STYLE_RECOMMENDATIONS.get(style.lower()) if isinstance(STYLE_RECOMMENDATIONS, dict) else None
+    drum_cues = ""
+    if isinstance(rec, dict) and rec.get("drums"):
+        drum_cues = f"\n\nDrum production cues (follow closely):\n{rec['drums']}\n"
 
     user = (
         f"Generate a {bars}-bar drum pattern in the style '{style}'. "
         "Use 16 steps per bar (1/16). "
+        f"{drum_cues}"
         "Return ONLY JSON.\n\n"
         f"If you need a template, follow this shape: {json.dumps(schema)}\n\n"
         f"Extra prompt: {prompt or ''}"
@@ -4915,15 +5492,22 @@ async def _openai_generate_pair(style: str, bars: int, drum_lanes: list[str], ba
         "Each lane array length bars*16; each value integer 0..127 (0 means rest). "
         "bass must match: {bars:int, step_division:'1/16', root_midi:int, steps:[midi...], velocities:[vel...]}. "
         "steps length bars*16; each entry is 0 (rest) or MIDI note 0..127. velocities length bars*16, 0..127, use 0 when step is 0. "
-        "Keep bass monophonic (one note per step). Keep patterns beginner-friendly. "
+        "Keep bass monophonic (one note per step). "
+        "Match the density and aggression implied by the style and cues: hard dance may use pounding kicks and very fast hats; "
+        "minimal techno may stay sparse. Do not default to generic house if the style is hardcore or gabber. "
         "The 'applied' object must contain teaching commentary fields: summary (string), why_drums (array of strings), why_bass (array of strings), listening_tips (array of strings). "
         "The 'applied' object must also include suggested_settings with nested drums and bass objects containing normalized 0..1 values for: filter_cutoff, filter_resonance, drive, eq_low_cut, eq_presence, space."
     )
+
+    cues = _style_cues_for_generation(style)
+    cues_block = f"\n\nProduction cues from the style definition (obey these):\n{cues}\n" if cues else ""
 
     user = (
         f"Generate a {bars}-bar drum pattern and a complementary bassline in the style '{style}'. "
         f"For bass use root MIDI {bass_root_midi} as tonal center. "
         f"Bass style profile: scale={bass_profile['scale']}, octave_range={bass_profile['octave_range']}, density={bass_profile['density']}, rhythm={bass_profile['rhythm']}, note_pool={bass_profile['note_pool']}. "
+        f"Bass profile notes: {bass_profile.get('explain', '')}\n"
+        f"{cues_block}"
         "Return ONLY JSON.\n\n"
         f"Template: {json.dumps(schema)}\n\n"
         f"Extra prompt: {prompt or ''}"
@@ -4943,6 +5527,94 @@ def _query_with_timeout(address: str, args: list, timeout_s: float = 0.6):
                 return {"ok": True, "address": address, "args": payload}
         time.sleep(0.03)
     return {"ok": False, "address": address, "error": "timeout"}
+
+
+def _parse_osc_num_devices_args(args) -> int | None:
+    """
+    ideoforms AbletonOSC: /live/track/get/num_devices reply is (track_id, num_devices),
+    not a single int. Using args[0] alone breaks track 0 (always read as 0 devices).
+    """
+    if not isinstance(args, tuple) or len(args) < 1:
+        return None
+    try:
+        if len(args) >= 2:
+            return int(args[1])
+        return int(args[0])
+    except Exception:
+        return None
+
+
+def _get_track_num_devices_osc(track_index: int, *, timeout_s: float = 1.0) -> int | None:
+    """Query /live/track/get/num_devices; None if the OSC query failed."""
+    if OSC_LISTENER_ERROR is not None:
+        return None
+    res = _query_with_timeout("/live/track/get/num_devices", [int(track_index)], timeout_s=float(timeout_s))
+    if not isinstance(res, dict) or not res.get("ok"):
+        return None
+    return _parse_osc_num_devices_args(res.get("args"))
+
+
+def _instrument_index_hints_from_applied(applied: list | None) -> list[str]:
+    """If MCP failed with 'not found' on browser URIs, point users at rebuilding the on-disk index."""
+    if not applied:
+        return []
+    for entry in applied:
+        if not isinstance(entry, dict):
+            continue
+        d = entry.get("detail")
+        s = ""
+        if isinstance(d, dict):
+            s = str(d.get("after_error") or d.get("error") or "")
+        sl = s.lower()
+        if "not found" in sl and ("uri" in sl or "browser" in sl or "query:" in s):
+            return [
+                "MCP: browser URI not found (stale or different Live/library). Rebuild: AbletonMCP on, Live open, then POST /mcp/index/rebuild to refresh knowledge/ableton_browser_index.json on this machine."
+            ]
+    return []
+
+
+def _osc_fill_instruments_on_empty_tracks(plan: list[dict], applied: list[dict]) -> None:
+    """
+    AbletonMCP can report success while a track still has an empty device chain. After the main
+    MCP/OSC pass, any Pulse track with num_devices==0 gets a built-in class device via /live/track/load_device.
+    """
+    time.sleep(0.55)
+    for item in plan:
+        ti = int(item["track_index"])
+        n = _get_track_num_devices_osc(ti, timeout_s=1.0)
+        if n is None:
+            n = _get_track_num_devices_osc(ti, timeout_s=1.5)
+        if n is not None and n > 0:
+            continue
+        if n is None:
+            # Still unknown (OSC listener/timeout) — do not add a second load_device blindly.
+            continue
+        try:
+            dev = _default_osc_instrument_name_for_track(ti)
+            ctrl.load_device(ti, dev)
+            time.sleep(0.2)
+            applied.append(
+                {
+                    "track_index": ti,
+                    "role": item.get("role"),
+                    "ok": True,
+                    "detail": {
+                        "ok": True,
+                        "source": "osc_fill_zero_devices",
+                        "device": dev,
+                        "num_devices_before": 0,
+                    },
+                }
+            )
+        except Exception as e:
+            applied.append(
+                {
+                    "track_index": ti,
+                    "role": item.get("role"),
+                    "ok": False,
+                    "detail": {"source": "osc_fill_zero_devices", "error": str(e), "num_devices_before": 0},
+                }
+            )
 
 
 @app.get("/setup/status")
@@ -4998,13 +5670,7 @@ def track_num_devices(track_index: int = Query(..., ge=0), timeout_s: float = Qu
     if not isinstance(res, dict) or not res.get("ok"):
         return {"ok": False, "error": "timeout", "address": "/live/track/get/num_devices"}
 
-    args = res.get("args")
-    n = None
-    if isinstance(args, tuple) and len(args) > 0:
-        try:
-            n = int(args[0])
-        except Exception:
-            n = None
+    n = _parse_osc_num_devices_args(res.get("args"))
     return {"ok": True, "track_index": int(track_index), "num_devices": n}
 
 
@@ -5097,15 +5763,19 @@ async def _openai_generate_bassline(style: str, bars: int, root_midi: int, promp
         "step_division must be '1/16'. bars must be an integer 1..4. root_midi must be 0..127. "
         "steps is an array length bars*16. Each element is either 0 (rest) or a MIDI note number 0..127. "
         "velocities is an array length bars*16. Each element is 0..127; use 0 when step is 0. "
-        "Keep it monophonic (at most one note per step) and beginner-friendly."
+        "Keep it monophonic (at most one note per step). Match genre: hard dance often uses fewer, shorter notes; "
+        "house/techno can be more groovy and repetitive."
     )
+
+    cues = _style_cues_for_generation(style)
 
     user = (
         f"Generate a {bars}-bar bassline in the style '{style}'. "
         "Use 16 steps per bar (1/16). "
         f"Use root note MIDI {root_midi} as the tonal center. "
         f"Style settings: scale={profile['scale']}, octave_range={profile['octave_range']}, density={profile['density']}, rhythm={profile['rhythm']}, note_pool={profile['note_pool']}. "
-        "Prefer a simple, groovy, repetitive pattern appropriate for the style. "
+        f"Style profile intent: {profile.get('explain', '')}\n"
+        f"{(cues + chr(10)) if cues else ''}"
         "Return ONLY JSON.\n\n"
         f"Template shape: {json.dumps(schema)}\n\n"
         f"Extra prompt: {prompt or ''}"

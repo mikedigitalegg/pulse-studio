@@ -1,0 +1,591 @@
+:root {
+  --bg: #07111f;
+  --panel: rgba(9, 18, 35, 0.72);
+  --panel-border: rgba(168, 208, 255, 0.16);
+  --text: #edf4ff;
+  --muted: #9eb4d1;
+  --accent: #64e6ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  font-family: Georgia, "Times New Roman", serif;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top, rgba(100, 230, 255, 0.18), transparent 28%),
+    radial-gradient(circle at 80% 20%, rgba(255, 107, 107, 0.2), transparent 30%),
+    linear-gradient(160deg, #030814 0%, #081426 48%, #040914 100%);
+}
+
+body {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto auto auto auto 1fr;
+  gap: 18px;
+  padding: 24px;
+  transition: padding 180ms ease;
+}
+
+.hero,
+.status-panel,
+.device-panel,
+.theme-panel,
+.scene-panel,
+.auto-panel,
+.bass-panel {
+  position: relative;
+  z-index: 2;
+}
+
+.hero {
+  display: grid;
+  gap: 20px;
+  align-items: start;
+  padding: 28px;
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+}
+
+.eyebrow,
+.hint,
+.label,
+.overlay-copy,
+.hud-label,
+.hud-tip {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(3rem, 7vw, 6.1rem);
+  line-height: 0.9;
+  max-width: 10ch;
+}
+
+.lede,
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.hero-copy {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(420px, 560px);
+  gap: 32px;
+  align-items: start;
+}
+
+.hero-preview-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 18px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(11, 27, 49, 0.82), rgba(7, 19, 36, 0.68));
+  border: 1px solid rgba(168, 208, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.hero-preview-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero-preview-head strong {
+  color: rgba(237, 244, 255, 0.92);
+  font-size: 0.95rem;
+}
+
+.hero-preview-frame {
+  position: relative;
+  min-height: 250px;
+  aspect-ratio: 16 / 10;
+  border-radius: 20px;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 30%, rgba(100, 230, 255, 0.2), rgba(4, 11, 22, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+#heroPreviewCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  padding-top: 6px;
+}
+
+button,
+select,
+input[type="range"] {
+  appearance: none;
+  border-radius: 999px;
+  font: inherit;
+}
+
+button,
+select {
+  padding: 14px 22px;
+}
+
+.hero .controls button {
+  min-width: 0;
+}
+
+.hero .controls .primary {
+  min-width: 340px;
+}
+
+button {
+  border: 0;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease, background 180ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+select {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  min-width: min(420px, 78vw);
+}
+
+input[type="range"] {
+  width: 100%;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.12);
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #94f7ff;
+  box-shadow: 0 0 0 4px rgba(100, 230, 255, 0.18);
+}
+
+.primary {
+  background: linear-gradient(135deg, var(--accent), #94f7ff);
+  color: #02212d;
+  box-shadow: 0 12px 24px rgba(100, 230, 255, 0.25);
+}
+
+.secondary,
+.theme-btn,
+.scene-btn,
+.auto-btn,
+.hud-btn {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.status-panel {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.status-card,
+.device-panel,
+.theme-panel,
+.scene-panel,
+.auto-panel,
+.bass-panel {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(7, 16, 31, 0.6);
+  border: 1px solid var(--panel-border);
+  backdrop-filter: blur(12px);
+}
+
+.label,
+.hud-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.status-card strong {
+  font-size: 1.1rem;
+}
+
+.device-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 16px;
+}
+
+.device-picker {
+  display: block;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 18px;
+}
+
+.control-grid--triple {
+  grid-template-columns: 1.35fr 1.15fr 0.9fr;
+}
+
+.theme-panel,
+.scene-panel,
+.auto-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+
+.theme-buttons,
+.scene-buttons,
+.auto-buttons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.theme-btn,
+.scene-btn,
+.auto-btn {
+  padding: 10px 16px;
+}
+
+.theme-btn.is-active,
+.scene-btn.is-active,
+.auto-btn.is-active,
+.hud-btn.is-active {
+  background: linear-gradient(135deg, rgba(100, 230, 255, 0.3), rgba(255, 255, 255, 0.12));
+  box-shadow: 0 10px 24px rgba(100, 230, 255, 0.12);
+}
+
+.auto-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+}
+
+.speed-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.speed-picker .label {
+  margin: 0;
+}
+
+.speed-picker select {
+  min-width: 84px;
+  padding: 10px 14px;
+}
+
+.bass-panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.bass-control label {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.visual-frame {
+  position: relative;
+  min-height: clamp(320px, 46vh, 620px);
+  border-radius: 28px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.visual-hud {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 3;
+  display: grid;
+  gap: 10px;
+  width: min(620px, calc(100% - 36px));
+  padding: 14px;
+  border-radius: 18px;
+  background: rgba(4, 11, 22, 0.48);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(18px);
+  opacity: 0.42;
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.visual-hud:hover,
+.visual-frame:focus-within .visual-hud,
+.app-shell.is-fullscreen .visual-hud {
+  opacity: 1;
+}
+
+.hud-group {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hud-controls strong {
+  min-width: 118px;
+  text-align: center;
+}
+
+.hud-group--actions {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+
+.hud-btn {
+  padding: 8px 14px;
+}
+
+.hud-tip {
+  color: rgba(237, 244, 255, 0.66);
+  font-size: 0.66rem;
+}
+
+.overlay-copy {
+  position: absolute;
+  left: 20px;
+  bottom: 18px;
+  display: flex;
+  gap: 10px;
+  color: rgba(237, 244, 255, 0.7);
+  font-size: 0.72rem;
+}
+
+.app-shell.is-fullscreen {
+  padding: 0;
+  gap: 0;
+}
+
+.app-shell.is-fullscreen .hero,
+.app-shell.is-fullscreen .status-panel,
+.app-shell.is-fullscreen .device-panel,
+.app-shell.is-fullscreen .control-grid,
+.app-shell.is-fullscreen .bass-panel {
+  display: none;
+}
+
+.app-shell.is-fullscreen .visual-frame {
+  border-radius: 0;
+  min-height: 100vh;
+  border: 0;
+}
+
+.app-shell.is-fullscreen .overlay-copy {
+  bottom: 14px;
+  left: 16px;
+}
+
+@media (max-width: 1320px) {
+  .control-grid--triple,
+  .bass-panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1180px) {
+  .hero-copy {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-preview-card {
+    max-width: 640px;
+  }
+
+  .hero-preview-frame {
+    aspect-ratio: 16 / 9;
+  }
+}
+
+  .hero-preview-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 18px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(11, 27, 49, 0.82), rgba(7, 19, 36, 0.68));
+  border: 1px solid rgba(168, 208, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+}
+
+  .hero-preview-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  padding: 18px;
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(11, 27, 49, 0.82), rgba(7, 19, 36, 0.68));
+  border: 1px solid rgba(168, 208, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+}
+
+@media (max-width: 960px) {
+  body {
+    overflow: auto;
+  }
+
+  .hero {
+  display: grid;
+  gap: 20px;
+  align-items: start;
+  padding: 28px;
+  border: 1px solid var(--panel-border);
+  border-radius: 24px;
+  background: var(--panel);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+}
+
+  .status-panel,
+  .device-panel,
+  .theme-panel,
+  .scene-panel,
+  .auto-panel,
+  .bass-panel {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .visual-frame {
+    min-height: 52vh;
+  }
+
+  .auto-row,
+  .visual-hud,
+  .hud-group,
+  .hud-controls,
+  .hud-group--actions {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .hud-controls strong {
+    text-align: left;
+    min-width: 0;
+  }
+
+  select {
+    min-width: 100%;
+  }
+}
+.visual-frame.hud-visible .visual-hud,
+.visual-frame.hud-visible .overlay-copy,
+.app-shell:not(.is-cinematic) .visual-hud,
+.app-shell:not(.is-cinematic) .overlay-copy {
+  opacity: 1;
+}
+
+.app-shell.is-cinematic .visual-hud,
+.app-shell.is-cinematic .overlay-copy {
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.app-shell.is-cinematic .visual-hud {
+  pointer-events: none;
+}
+
+.app-shell.is-cinematic .visual-frame.hud-visible .visual-hud,
+.app-shell.is-cinematic .visual-frame.hud-visible .overlay-copy {
+  opacity: 1;
+}
+
+.app-shell.is-cinematic .visual-frame.hud-visible .visual-hud {
+  pointer-events: auto;
+}
+
+.hero .controls .secondary.is-active,
+.hud-btn.is-active {
+  background: linear-gradient(135deg, rgba(100, 230, 255, 0.22), rgba(255, 255, 255, 0.12));
+  box-shadow: 0 10px 24px rgba(100, 230, 255, 0.12);
+}
+.auto-stack {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+}
+
+.auto-row--meta {
+  align-items: center;
+}
+
+.toggle-btn.is-active {
+  background: linear-gradient(135deg, rgba(100, 230, 255, 0.3), rgba(255, 255, 255, 0.12));
+  box-shadow: 0 10px 24px rgba(100, 230, 255, 0.12);
+}

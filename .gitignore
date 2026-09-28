@@ -4,3 +4,5 @@ audio/
 recordings/
 Projects/
 ableton-mcp/
+.venv/
+.env

@@ -159,6 +159,50 @@
       }
       .view-section.active { display: block; }
 
+      .main-content:has(#view-visualizer.active) {
+        padding: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      #view-visualizer.view-section {
+        flex: 1;
+        display: none;
+        flex-direction: column;
+        min-height: 0;
+        max-width: none;
+        margin: 0;
+        padding: 0;
+        padding-bottom: 0;
+      }
+      #view-visualizer.view-section.active { display: flex; }
+      .visualizer-toolbar {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 12px 16px;
+        background: var(--bg-sidebar);
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+      .visualizer-toolbar a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      .visualizer-toolbar a:hover { text-decoration: underline; }
+      #pulseCanvasFrame {
+        flex: 1;
+        width: 100%;
+        min-height: 0;
+        border: none;
+        background: #050608;
+      }
+
       h2 { font-size: 24px; font-weight: 600; margin: 0 0 20px; color: white; }
       h3 { font-size: 18px; font-weight: 500; margin: 24px 0 16px; color: var(--text-main); }
       h4 { font-size: 14px; font-weight: 600; margin: 0 0 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
@@ -523,6 +567,9 @@
         <div class="nav-item" data-view="performance" onclick="switchView('performance')">
           <span>Performance</span>
         </div>
+        <div class="nav-item" data-view="visualizer" onclick="switchView('visualizer')">
+          <span>Visualizer</span>
+        </div>
         <div class="nav-item" data-view="system" onclick="switchView('system')">
           <span>System</span>
         </div>
@@ -601,6 +648,15 @@
     <!-- Main Content -->
     <div class="main-content">
       
+      <!-- VISUALIZER (Pulse Canvas) -->
+      <div id="view-visualizer" class="view-section">
+        <div class="visualizer-toolbar">
+          <span>Pulse Canvas — capture tab audio, a loopback device, or system audio as in the standalone app.</span>
+          <a href="/pulse_canvas/" target="_blank" rel="noopener">Open in new tab</a>
+        </div>
+        <iframe id="pulseCanvasFrame" title="Pulse Canvas visualizer" src="/pulse_canvas/"></iframe>
+      </div>
+
       <!-- DASHBOARD VIEW -->
       <div id="view-dashboard" class="view-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -691,6 +747,10 @@
               <div>
                  <label class="control-label">Suggested Arrangement</label>
                  <div id="trackArrangement" style="font-size: 13px; color: var(--text-muted);"></div>
+                 <div style="margin-top: 10px;">
+                   <label class="control-label">Autoplay Playlist (editable)</label>
+                   <div id="trackPlaylist" style="font-size: 13px;"></div>
+                 </div>
               </div>
             </div>
   
@@ -820,6 +880,10 @@
               <label class="control-label">FX Preset</label>
               <select id="ttsFx">
                 <option value="clean">Clean</option>
+                <option value="chipmunk">Chipmunk (Happy House)</option>
+                <option value="deep">Deep / Monster</option>
+                <option value="robot">Robot</option>
+                <option value="tremolo">Tremolo / Gate</option>
                 <option value="telephone">Telephone</option>
                 <option value="lofi">Lo-Fi</option>
                 <option value="distort">Distort</option>
@@ -1015,6 +1079,10 @@
             <input id="recLabel" type="text" placeholder="label (optional)" style="flex: 1; min-width: 200px;" />
             <select id="recFx" style="width: 160px;">
               <option value="clean">FX: Clean</option>
+              <option value="chipmunk">FX: Chipmunk (Happy House)</option>
+              <option value="deep">FX: Deep / Monster</option>
+              <option value="robot">FX: Robot</option>
+              <option value="tremolo">FX: Tremolo / Gate</option>
               <option value="telephone">FX: Telephone</option>
               <option value="lofi">FX: Lo-Fi</option>
               <option value="distort">FX: Distort</option>
@@ -1309,6 +1377,34 @@
              <button id="reloadKnowledge" class="secondary">Reload from Disk</button>
              <button id="saveKnowledge" class="primary">Save Changes</button>
           </div>
+        </div>
+
+        <div class="card" style="margin-bottom: 20px;">
+          <h4>Refresh knowledge</h4>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+            <strong>Styles</strong> come from <code>knowledge/styles.json</code> on the server. The <strong>browser index</strong> (for MCP instrument picks) is stored in
+            <code>knowledge/ableton_browser_index.json</code> and must match this computer’s Live library — run after new packs, a Live update, or “URI not found” errors. Requires
+            <strong>Live</strong> open with <strong>AbletonMCP</strong> enabled.
+          </p>
+          <div class="grid-3" style="margin-bottom: 10px; align-items: end;">
+            <div>
+              <label class="control-label">Index category (rebuild)</label>
+              <select id="kbIndexCategory" style="width: 100%;">
+                <option value="all" selected>All</option>
+                <option value="instruments">Instruments</option>
+                <option value="drums">Drums</option>
+                <option value="sounds">Sounds</option>
+                <option value="audio_effects">Audio Effects</option>
+                <option value="midi_effects">MIDI Effects</option>
+              </select>
+            </div>
+            <div class="row" style="flex-wrap: wrap; gap: 8px; grid-column: span 2;">
+              <button type="button" id="kbRefreshStyles" class="secondary" data-busy-text="Loading...">Reload styles</button>
+              <button type="button" id="kbRebuildIndex" class="secondary" data-busy-text="Rebuilding...">Rebuild browser index</button>
+              <button type="button" id="kbRefreshAll" class="primary" data-busy-text="Refreshing...">Refresh styles + index</button>
+            </div>
+          </div>
+          <div id="knowledgeRefreshNote" class="kb-meta" style="white-space: pre-wrap;"></div>
         </div>
 
         <div class="card">
@@ -1645,13 +1741,15 @@
                   <span class="kb-badge">${escapeHtml(String(tempo ?? ''))} bpm</span>
                   <span class="kb-badge">slot ${escapeHtml(String(clipSlot ?? ''))}</span>
                   <span class="kb-badge">${escapeHtml(kit || 'kit')}</span>
+                  <button class="secondary" type="button" data-kb-action="clone" data-style-key="${escapeHtml(key)}" style="padding: 6px 10px; font-size: 12px;">Clone</button>
+                  <button class="secondary" type="button" data-kb-action="delete" data-style-key="${escapeHtml(key)}" style="padding: 6px 10px; font-size: 12px; border-color: rgba(239, 68, 68, 0.35); color: #fca5a5;">Delete</button>
                 </div>
               </summary>
               <div class="kb-style-body">
                 <div class="kb-field-grid">
                   <div>
                     <label class="control-label">Tempo</label>
-                    <input type="number" step="0.1" min="40" max="240" data-kb-field="tempo" data-style-key="${escapeHtml(key)}" value="${escapeHtml(String(tempo ?? ''))}" />
+                    <input type="number" step="1" min="40" max="240" data-kb-field="tempo" data-style-key="${escapeHtml(key)}" value="${escapeHtml(String(tempo ?? ''))}" />
                   </div>
                   <div>
                     <label class="control-label">Clip Slot</label>
@@ -1862,6 +1960,105 @@
 
       let _trackAutoPlayStop = null;
 
+      function _normalizeArrangement(arr) {
+        const out = [];
+        const a = Array.isArray(arr) ? arr : [];
+        for (const step of a) {
+          if (!step || typeof step !== 'object') continue;
+          const scene = String(step.scene || '').trim();
+          if (!scene) continue;
+          const repeats = Math.max(1, Math.min(256, int(step.repeats || 1)));
+          out.push({ scene, repeats });
+        }
+        return out;
+      }
+
+      function _buildAutoplayStepsFromPlaylist(playlist, startSlotIndex) {
+        const nameToOffset = {
+          "intro": 0,
+          "build 1": 1,
+          "build 2": 2,
+          "peak": 3,
+          "main a": 1,
+          "main b": 2,
+          "break": 3,
+          "breakdown": 5,
+          "climax": 6,
+          "drop": 4,
+          "outro": 5,
+        };
+
+        const steps = [];
+        const pl = Array.isArray(playlist) ? playlist : [];
+        for (const st of pl) {
+          if (!st || typeof st !== 'object') continue;
+          const key = String(st.scene || '').trim().toLowerCase();
+          const off = nameToOffset[key];
+          if (off === undefined) continue;
+          const reps = Math.max(1, Math.min(256, int(st.repeats || 1)));
+          steps.push({ scene_index: int(startSlotIndex) + int(off), repeats: reps });
+        }
+        return steps;
+      }
+
+      function renderTrackPlaylist(arrangement) {
+        const root = document.getElementById('trackPlaylist');
+        if (!root) return;
+
+        const arr = _normalizeArrangement(arrangement);
+        root.innerHTML = '';
+
+        if (!arr.length) {
+          root.innerHTML = '<div style="color: var(--text-muted);">No arrangement yet.</div>';
+          return;
+        }
+
+        const rows = arr.map((a, i) => {
+          const scene = escapeHtml(String(a.scene || ''));
+          const repeats = escapeHtml(String(a.repeats || 1));
+          return `
+            <div class="row" style="gap: 8px; align-items: center; margin-bottom: 8px;">
+              <div style="min-width: 18px; color: var(--text-muted);">${i + 1}</div>
+              <input type="text" data-playlist-field="scene" data-playlist-index="${i}" value="${scene}" style="flex: 1;" />
+              <input type="number" min="1" max="256" data-playlist-field="repeats" data-playlist-index="${i}" value="${repeats}" style="width: 90px;" />
+              <button type="button" class="secondary" data-playlist-action="up" data-playlist-index="${i}" style="padding: 6px 10px;">↑</button>
+              <button type="button" class="secondary" data-playlist-action="down" data-playlist-index="${i}" style="padding: 6px 10px;">↓</button>
+              <button type="button" class="secondary" data-playlist-action="delete" data-playlist-index="${i}" style="padding: 6px 10px;">Remove</button>
+            </div>
+          `;
+        }).join('');
+
+        root.innerHTML = rows + `
+          <div class="row" style="gap: 10px; align-items: center; margin-top: 8px;">
+            <button type="button" class="secondary" id="trackPlaylistAdd">Add Step</button>
+            <div style="color: var(--text-muted); font-size: 12px;">Scene names must match the generated labels (Intro, Build 1, Drop...).</div>
+          </div>
+        `;
+      }
+
+      function readTrackPlaylist() {
+        const root = document.getElementById('trackPlaylist');
+        if (!root) return [];
+
+        const rows = [];
+        const inputs = Array.from(root.querySelectorAll('input[data-playlist-index]'));
+        const byIndex = {};
+        for (const el of inputs) {
+          const idx = int(el.getAttribute('data-playlist-index'));
+          const field = String(el.getAttribute('data-playlist-field') || '');
+          if (!byIndex[idx]) byIndex[idx] = { scene: '', repeats: 1 };
+          if (field === 'scene') byIndex[idx].scene = String(el.value || '').trim();
+          if (field === 'repeats') byIndex[idx].repeats = Math.max(1, Math.min(256, int(el.value || 1)));
+        }
+        const keys = Object.keys(byIndex).map(k => int(k)).sort((a, b) => a - b);
+        for (const k of keys) {
+          const it = byIndex[k];
+          if (!it.scene) continue;
+          rows.push({ scene: it.scene, repeats: it.repeats || 1 });
+        }
+        return rows;
+      }
+
       function renderFullTrackOutput(resp) {
         const scenesEl = document.getElementById("trackScenes");
         const arrEl = document.getElementById("trackArrangement");
@@ -1894,6 +2091,8 @@
             .join("");
         }
 
+        renderTrackPlaylist(arr);
+
         if (instEl) {
           const dbg = resp && resp.instruments ? resp.instruments : null;
           instEl.textContent = dbg ? JSON.stringify(dbg, null, 2) : "";
@@ -1901,66 +2100,27 @@
       }
 
       async function startFullTrackAutoplay(arrangement, startSlotIndex, barsPerScene, clipBars) {
-        const arr = Array.isArray(arrangement) ? arrangement : [];
-        const barsPerSceneInt = Math.max(1, Math.min(8, parseInt(barsPerScene || "1", 10) || 1));
-        const clipBarsInt = Math.max(1, Math.min(32, parseInt(clipBars || barsPerSceneInt || "1", 10) || 1));
+        const playlist = _normalizeArrangement(arrangement);
         const bpm = parseFloat(document.getElementById("tempo")?.value || "140");
-        const secPerBar = (4.0 * 60.0) / Math.max(1.0, bpm);
-        const sceneDurMs = Math.max(500, Math.floor(secPerBar * clipBarsInt * 1000));
-
-        const nameToOffset = {
-          "intro": 0,
-          "build 1": 1,
-          "build 2": 2,
-          "peak": 3,
-          "main a": 1,
-          "main b": 2,
-          "break": 3,
-          "breakdown": 5,
-          "climax": 6,
-          "drop": 4,
-          "outro": 5,
-        };
-
-        const steps = [];
-        for (const step of arr) {
-          if (!step || typeof step !== "object") continue;
-          const key = String(step.scene || "").trim().toLowerCase();
-          const off = nameToOffset[key];
-          if (off === undefined) continue;
-          const reps = Math.max(1, Math.min(16, parseInt(step.repeats || 1, 10) || 1));
-          steps.push({ sceneIndex: startSlotIndex + off, repeats: reps });
-        }
-
+        const clipBarsInt = Math.max(1, Math.min(128, parseInt(clipBars || "8", 10) || 8));
+        const steps = _buildAutoplayStepsFromPlaylist(playlist, int(startSlotIndex));
         if (!steps.length) throw new Error("empty_arrangement");
 
-        let cancelled = false;
-        _trackAutoPlayStop = () => {
-          cancelled = true;
+        _trackAutoPlayStop = async () => {
+          try {
+            await post('/autoplay/stop', {});
+          } catch (e) {
+            // ignore
+          }
           _trackAutoPlayStop = null;
         };
 
-        try {
-          await post("/transport/play", {});
-        } catch (e) {
-          // ignore
-        }
-
-        (async () => {
-          while (!cancelled) {
-            for (const st of steps) {
-              if (cancelled) break;
-              const sceneIndex = int(st.sceneIndex);
-              const repeats = Math.max(1, Math.min(64, int(st.repeats || 1)));
-              try {
-                await post("/scenes/fire", { scene_index: sceneIndex });
-              } catch (e) {
-                // ignore
-              }
-              await new Promise((r) => setTimeout(r, sceneDurMs * repeats));
-            }
-          }
-        })();
+        await post('/autoplay/start', {
+          steps,
+          bpm: Number.isFinite(bpm) ? bpm : 140,
+          clip_bars: clipBarsInt,
+          loop: true,
+        });
       }
 
       function applyTrackFilter() {
@@ -2126,6 +2286,98 @@
         }
       });
 
+      let _generatedStylePayload = null;
+
+      document.getElementById("btnGenerateStyle")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnGenerateStyle");
+        const name = (document.getElementById("newStyleName")?.value || "").trim();
+        const description = (document.getElementById("newStyleDescription")?.value || "").trim();
+        const baseA = (document.getElementById("newStyleBaseA")?.value || "").trim();
+        const baseB = (document.getElementById("newStyleBaseB")?.value || "").trim();
+        const resultEl = document.getElementById("newStyleResult");
+        const previewEl = document.getElementById("newStylePreview");
+        const saveBtn = document.getElementById("btnSaveGeneratedStyle");
+
+        _generatedStylePayload = null;
+        if (saveBtn) saveBtn.disabled = true;
+
+        if (!name) {
+          if (resultEl) resultEl.textContent = "Enter a style name.";
+          return;
+        }
+
+        setBusy(btn, true);
+        try {
+          const resp = await post("/knowledge/styles/generate", {
+            name,
+            description: description || null,
+            base_style_a: baseA || null,
+            base_style_b: baseB || null,
+          });
+          if (!resp || !resp.ok) {
+            const err = (resp && resp.error) ? String(resp.error) : "generate_failed";
+            let extra = "";
+            if (resp && resp.detail && typeof resp.detail === "object") {
+              try {
+                extra = " — " + JSON.stringify(resp.detail);
+              } catch (e) {
+                extra = " — (detail not serializable)";
+              }
+            }
+            if (resultEl) resultEl.textContent = err + extra;
+            if (previewEl) {
+              const raw = resp && resp.raw;
+              previewEl.textContent = raw && typeof raw === "object" ? JSON.stringify(raw, null, 2) : "";
+            }
+            log("Style generate failed: " + err + extra);
+            return;
+          }
+          _generatedStylePayload = { key: resp.key, style: resp.style };
+          if (previewEl) previewEl.textContent = JSON.stringify(resp.style, null, 2);
+          if (resultEl) {
+            const src = resp.source ? String(resp.source) : "?";
+            resultEl.textContent = `OK (${src}) · key: ${resp.key}`;
+          }
+          if (saveBtn) saveBtn.disabled = false;
+        } catch (e) {
+          log("Style generate error: " + e.message);
+          if (resultEl) resultEl.textContent = e.message;
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("btnSaveGeneratedStyle")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnSaveGeneratedStyle");
+        const resultEl = document.getElementById("newStyleResult");
+        if (!_generatedStylePayload || !_generatedStylePayload.key || !_generatedStylePayload.style) {
+          if (resultEl) resultEl.textContent = "Generate a preview first.";
+          return;
+        }
+
+        setBusy(btn, true);
+        let savedOk = false;
+        try {
+          const resp = await post("/knowledge/styles/add", {
+            key: _generatedStylePayload.key,
+            style: _generatedStylePayload.style,
+          });
+          if (!resp || !resp.ok) {
+            throw new Error((resp && resp.error) ? String(resp.error) : "save_failed");
+          }
+          savedOk = true;
+          _generatedStylePayload = null;
+          if (resultEl) resultEl.textContent = `Saved style '${resp.key}'.`;
+          await loadKnowledge();
+        } catch (e) {
+          log("Style save failed: " + e.message);
+          alert("Could not save style: " + e.message);
+        } finally {
+          setBusy(btn, false);
+          if (savedOk && btn) btn.disabled = true;
+        }
+      });
+
       document.getElementById('kbStyleFilter')?.addEventListener('input', () => {
         if (!_knowledgeData) return;
         _renderKbStyles();
@@ -2137,6 +2389,92 @@
 
       document.getElementById('kbCollapseAll')?.addEventListener('click', () => {
         document.querySelectorAll('#kbStyles details.kb-style').forEach(d => { d.open = false; });
+      });
+
+      function _kbSlugifyKey(name) {
+        let s = String(name || '').trim().toLowerCase();
+        s = s.replace(/[^a-z0-9\s_-]/g, '');
+        s = s.replace(/[\s-]+/g, '_');
+        s = s.replace(/_+/g, '_');
+        s = s.replace(/^_+|_+$/g, '');
+        return s;
+      }
+
+      function _kbNextClipSlot(styles) {
+        if (!styles || typeof styles !== 'object') return 0;
+        const vals = [];
+        for (const k of Object.keys(styles)) {
+          const st = styles[k];
+          if (!st || typeof st !== 'object') continue;
+          const v = st.clip_slot;
+          const n = parseInt(String(v), 10);
+          if (Number.isFinite(n)) vals.push(n);
+        }
+        if (!vals.length) return 0;
+        return Math.max(...vals) + 1;
+      }
+
+      async function _kbSaveCurrentKnowledge() {
+        const btn = document.getElementById('saveKnowledge');
+        setBusy(btn, true);
+        try {
+          const resp = await post('/knowledge/styles', _knowledgeData);
+          if (!resp || resp.ok === false) {
+            throw new Error((resp && resp.error) ? resp.error : 'save_failed');
+          }
+          await loadKnowledge();
+        } finally {
+          setBusy(btn, false);
+        }
+      }
+
+      document.addEventListener('click', async (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        const action = t.getAttribute('data-kb-action');
+        if (!action) return;
+        const styleKey = t.getAttribute('data-style-key');
+        if (!styleKey) return;
+
+        if (!_knowledgeData || typeof _knowledgeData !== 'object') return;
+        if (!_knowledgeData.styles || typeof _knowledgeData.styles !== 'object') _knowledgeData.styles = {};
+        const styles = _knowledgeData.styles;
+        if (!styles[styleKey] || typeof styles[styleKey] !== 'object') return;
+
+        if (action === 'delete') {
+          const ok = confirm(`Delete style '${styleKey}'? This cannot be undone.`);
+          if (!ok) return;
+          delete styles[styleKey];
+          setKbDirty(true);
+          _syncKnowledgeEditorFromData();
+          _renderKbStyles();
+          await _kbSaveCurrentKnowledge();
+          return;
+        }
+
+        if (action === 'clone') {
+          const src = styles[styleKey];
+          const suggested = `${styleKey}_copy`;
+          const raw = prompt(`Clone style '${styleKey}' as new key:`, suggested);
+          if (raw === null) return;
+          const newKey = _kbSlugifyKey(raw);
+          if (!newKey) {
+            alert('Invalid key.');
+            return;
+          }
+          if (styles[newKey]) {
+            alert('That key already exists.');
+            return;
+          }
+          const cloned = JSON.parse(JSON.stringify(src));
+          cloned.clip_slot = _kbNextClipSlot(styles);
+          styles[newKey] = cloned;
+          setKbDirty(true);
+          _syncKnowledgeEditorFromData();
+          _renderKbStyles();
+          await _kbSaveCurrentKnowledge();
+          return;
+        }
       });
 
       document.addEventListener('change', (ev) => {
@@ -2244,7 +2582,7 @@
 
           if (document.getElementById("trackAutoPlayAfter")?.checked) {
             try {
-              if (_trackAutoPlayStop) _trackAutoPlayStop();
+              if (_trackAutoPlayStop) await _trackAutoPlayStop();
               await startFullTrackAutoplay(resp.suggested_arrangement, int(resp.start_slot_index), bars_per_scene, int(resp.clip_bars || clip_bars));
             } catch (e) {
               log("Auto-play failed: " + e.message);
@@ -2359,18 +2697,12 @@
 
       document.getElementById("trackAutoPlay")?.addEventListener("click", async () => {
         try {
-          // Use the currently rendered arrangement if available
           const start_slot_index = int(document.getElementById("trackStartSlot")?.value || 0);
           const bars_per_scene = int(document.getElementById("trackBarsPerScene")?.value || 1);
           const clip_bars = int(document.getElementById("trackClipBars")?.value || 8);
-          // Re-generate the arrangement list from the DOM
-          const lines = (document.getElementById("trackArrangement")?.innerText || "").split("\n").map(s => s.trim()).filter(Boolean);
-          const arr = lines.map(line => {
-            const m = line.match(/^(.*)×\s*(\d+)$/);
-            if (!m) return null;
-            return { scene: m[1].trim(), repeats: int(m[2]) };
-          }).filter(Boolean);
-          if (_trackAutoPlayStop) _trackAutoPlayStop();
+
+          const arr = readTrackPlaylist();
+          if (_trackAutoPlayStop) await _trackAutoPlayStop();
           await startFullTrackAutoplay(arr, start_slot_index, bars_per_scene, clip_bars);
         } catch (e) {
           log("Auto-play failed: " + e.message);
@@ -2379,9 +2711,47 @@
 
       document.getElementById("trackAutoStop")?.addEventListener("click", async () => {
         try {
-          if (_trackAutoPlayStop) _trackAutoPlayStop();
+          if (_trackAutoPlayStop) await _trackAutoPlayStop();
+          await post('/autoplay/stop', {});
         } catch (e) {
-          // ignore
+          log("Stop failed: " + e.message);
+        }
+      });
+
+      document.getElementById('trackPlaylist')?.addEventListener('click', async (ev) => {
+        const t = ev.target;
+        if (!(t instanceof HTMLElement)) return;
+        const action = t.getAttribute('data-playlist-action');
+        const idx = int(t.getAttribute('data-playlist-index'));
+        if (!action && t.id !== 'trackPlaylistAdd') return;
+
+        const arr = readTrackPlaylist();
+        if (t.id === 'trackPlaylistAdd') {
+          arr.push({ scene: 'Intro', repeats: 1 });
+          renderTrackPlaylist(arr);
+          return;
+        }
+
+        if (action === 'delete') {
+          arr.splice(idx, 1);
+          renderTrackPlaylist(arr);
+          return;
+        }
+
+        if (action === 'up' && idx > 0) {
+          const tmp = arr[idx - 1];
+          arr[idx - 1] = arr[idx];
+          arr[idx] = tmp;
+          renderTrackPlaylist(arr);
+          return;
+        }
+
+        if (action === 'down' && idx < arr.length - 1) {
+          const tmp = arr[idx + 1];
+          arr[idx + 1] = arr[idx];
+          arr[idx] = tmp;
+          renderTrackPlaylist(arr);
+          return;
         }
       });
 
@@ -2488,7 +2858,12 @@
           if (!resp || !resp.ok) throw new Error((resp && resp.error) ? resp.error : "tts_failed");
           _ttsLastUrl = String(resp.url || "");
           const prev = document.getElementById("ttsPreview");
-          if (prev && _ttsLastUrl) prev.src = `${API_BASE}${_ttsLastUrl}`;
+          if (prev && _ttsLastUrl) {
+            const fn = String(resp.filename || "");
+            prev.src = fn ? `${API_BASE}/audio/wav/${encodeURIComponent(fn)}` : `${API_BASE}${_ttsLastUrl}`;
+            prev.load();
+            try { await prev.play(); } catch (e) {}
+          }
           const fileEl = document.getElementById("ttsFile");
           const pathEl = document.getElementById("ttsPath");
           if (fileEl) fileEl.textContent = resp.filename ? String(resp.filename) : "";
@@ -2516,7 +2891,12 @@
           if (!resp || !resp.ok) throw new Error((resp && resp.error) ? resp.error : "process_failed");
           _ttsLastUrl = String(resp.url || _ttsLastUrl);
           const prev = document.getElementById("ttsPreview");
-          if (prev && _ttsLastUrl) prev.src = `${API_BASE}${_ttsLastUrl}`;
+          if (prev && _ttsLastUrl) {
+            const fn = String(resp.filename || "");
+            prev.src = fn ? `${API_BASE}/audio/wav/${encodeURIComponent(fn)}` : `${API_BASE}${_ttsLastUrl}`;
+            prev.load();
+            try { await prev.play(); } catch (e) {}
+          }
           setTtsStatus("Processed");
         } catch (e) {
           log("TTS process failed: " + e.message);
@@ -2655,6 +3035,11 @@
           }
           _lastPairExport = resp;
           setPairCommentary("Generated! Clips written to Ableton.");
+          try {
+            await refreshSequencersFromCache(payload.drum_clip_slot_index);
+          } catch (e) {
+            log("Sequencer refresh failed: " + e.message);
+          }
           const pre = document.getElementById("pairApplied");
           if (pre) {
             pre.style.display = "block";
@@ -2682,6 +3067,11 @@
           }
           _lastPairExport = resp;
           setPairCommentary("Generated! Launching scene...");
+          try {
+            await refreshSequencersFromCache(payload.drum_clip_slot_index);
+          } catch (e) {
+            log("Sequencer refresh failed: " + e.message);
+          }
           // Fire the scene
           const sceneIndex = payload.drum_clip_slot_index;
           await post("/scenes/fire", { scene_index: sceneIndex });
@@ -2930,7 +3320,152 @@
         loadPerformanceKnobs();
       }
 
-      // ... rest of the code remains the same ...
+      function _clearEl(id) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = "";
+      }
+
+      function _renderLaneGrid(rootEl, lanes, bars) {
+        if (!rootEl) return;
+        if (!lanes || typeof lanes !== 'object') {
+          rootEl.innerHTML = `<div style="font-size: 12px; color: var(--text-muted);">No data</div>`;
+          return;
+        }
+        const laneKeys = Object.keys(lanes);
+        if (!laneKeys.length) {
+          rootEl.innerHTML = `<div style="font-size: 12px; color: var(--text-muted);">No lanes</div>`;
+          return;
+        }
+
+        const totalSteps = Math.max(1, int(bars || 1)) * 16;
+        const cell = (on, strong) => {
+          const bg = on ? (strong ? 'rgba(99, 102, 241, 0.85)' : 'rgba(99, 102, 241, 0.45)') : 'rgba(255,255,255,0.06)';
+          return `<div style="width: 14px; height: 14px; border-radius: 3px; background:${bg}; border:1px solid rgba(255,255,255,0.06);"></div>`;
+        };
+
+        const rows = laneKeys.map((k) => {
+          const steps = Array.isArray(lanes[k]) ? lanes[k] : [];
+          const padded = steps.length >= totalSteps ? steps.slice(0, totalSteps) : steps.concat(Array(totalSteps - steps.length).fill(0));
+          const cells = padded.map((v, i) => {
+            const vv = int(v || 0);
+            const on = vv > 0;
+            const strong = vv >= 90;
+            const barLine = (i % 16 === 0) ? 'margin-left:6px;' : '';
+            return `<div style="${barLine}">${cell(on, strong)}</div>`;
+          }).join('');
+          return `
+            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+              <div style="width:70px; font-family: var(--font-mono); font-size:12px; color: var(--text-muted);">${escapeHtml(k)}</div>
+              <div style="display:flex; gap:4px; flex-wrap:wrap;">${cells}</div>
+            </div>
+          `;
+        }).join('');
+        rootEl.innerHTML = rows;
+      }
+
+      function _renderBassGrid(rootEl, bass) {
+        if (!rootEl) return;
+        if (!bass || typeof bass !== 'object') {
+          rootEl.innerHTML = `<div style="font-size: 12px; color: var(--text-muted);">No data</div>`;
+          return;
+        }
+        const bars = int(bass.bars || 1);
+        const totalSteps = Math.max(1, bars) * 16;
+        const steps = Array.isArray(bass.steps) ? bass.steps : [];
+        const vels = Array.isArray(bass.velocities) ? bass.velocities : [];
+        const s2 = steps.length >= totalSteps ? steps.slice(0, totalSteps) : steps.concat(Array(totalSteps - steps.length).fill(0));
+        const v2 = vels.length >= totalSteps ? vels.slice(0, totalSteps) : vels.concat(Array(totalSteps - vels.length).fill(0));
+
+        const cell = (on, strong) => {
+          const bg = on ? (strong ? 'rgba(16, 185, 129, 0.85)' : 'rgba(16, 185, 129, 0.45)') : 'rgba(255,255,255,0.06)';
+          return `<div style="width: 14px; height: 14px; border-radius: 3px; background:${bg}; border:1px solid rgba(255,255,255,0.06);"></div>`;
+        };
+
+        const cells = s2.map((n, i) => {
+          const nn = int(n || 0);
+          const vv = int(v2[i] || 0);
+          const on = nn > 0;
+          const strong = vv >= 90;
+          const barLine = (i % 16 === 0) ? 'margin-left:6px;' : '';
+          return `<div style="${barLine}" title="${on ? `note ${nn} vel ${vv}` : ''}">${cell(on, strong)}</div>`;
+        }).join('');
+
+        rootEl.innerHTML = `
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+            <div style="width:70px; font-family: var(--font-mono); font-size:12px; color: var(--text-muted);">bass</div>
+            <div style="display:flex; gap:4px; flex-wrap:wrap;">${cells}</div>
+          </div>
+        `;
+      }
+
+      function _setMeta(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = String(text || '');
+      }
+
+      async function refreshSequencersFromCache(slot) {
+        const s = int(slot || 0);
+        const resp = await get(`/cache/scene?slot=${encodeURIComponent(String(s))}`);
+        if (!resp || !resp.ok) {
+          throw new Error((resp && resp.error) ? resp.error : 'cache_fetch_failed');
+        }
+        const data = resp.data || {};
+
+        _setMeta('topDrumsMeta', `Slot ${s} · Drums ${data.drums ? 'cached' : 'empty'}`);
+        _setMeta('topBassMeta', `Slot ${s} · Bass ${data.bass ? 'cached' : 'empty'}`);
+        _setMeta('topPercMeta', `Slot ${s} · Perc ${data.perc ? 'cached' : 'empty'}`);
+        _setMeta('topStabsMeta', `Slot ${s} · Stabs ${data.stabs ? 'cached' : 'empty'}`);
+        _setMeta('topFxMeta', `Slot ${s} · FX ${data.fx ? 'cached' : 'empty'}`);
+
+        _renderLaneGrid(document.getElementById('topDrumsSeq'), data.drums && data.drums.lanes, data.drums && data.drums.bars);
+        _renderBassGrid(document.getElementById('topBassSeq'), data.bass);
+        _renderLaneGrid(document.getElementById('topPercSeq'), data.perc && data.perc.lanes, data.perc && data.perc.bars);
+        _renderLaneGrid(document.getElementById('topStabsSeq'), data.stabs && data.stabs.lanes, data.stabs && data.stabs.bars);
+        _renderLaneGrid(document.getElementById('topFxSeq'), data.fx && data.fx.lanes, data.fx && data.fx.bars);
+
+        if (s === int(document.getElementById('bassSlot')?.value || 0) && data.bass) {
+          _setMeta('bassMeta', `Slot ${s} · ${int(data.bass.bars || 1)} bar(s)`);
+          _renderBassGrid(document.getElementById('bassSeq'), data.bass);
+        }
+        if (s === int(document.getElementById('percSlot')?.value || 0) && data.perc) {
+          _renderLaneGrid(document.getElementById('percSeq'), data.perc.lanes, data.perc.bars);
+        }
+        if (s === int(document.getElementById('stabsSlot')?.value || 0) && data.stabs) {
+          _renderLaneGrid(document.getElementById('stabsSeq'), data.stabs.lanes, data.stabs.bars);
+        }
+        if (s === int(document.getElementById('fxSlot')?.value || 0) && data.fx) {
+          _renderLaneGrid(document.getElementById('fxSeq'), data.fx.lanes, data.fx.bars);
+        }
+
+        const aiSlot = document.getElementById('aiSlot');
+        if (aiSlot && s === int(aiSlot.value || 0) && data.drums) {
+          _renderLaneGrid(document.getElementById('topDrumsSeq'), data.drums.lanes, data.drums.bars);
+        }
+
+        return resp;
+      }
+
+      let _seqPollTimer = null;
+      function _startSeqPoll() {
+        if (_seqPollTimer) return;
+        _seqPollTimer = setInterval(async () => {
+          const modal = document.getElementById('sequencersModal');
+          if (!modal || !modal.classList.contains('active')) return;
+          const slot = int(document.getElementById('pairDrumSlot')?.value || 0);
+          try {
+            await refreshSequencersFromCache(slot);
+          } catch (e) {
+            _setMeta('topDrumsMeta', `Slot ${slot} · Error: ${e.message}`);
+          }
+        }, 750);
+      }
+      function _stopSeqPoll() {
+        if (_seqPollTimer) {
+          clearInterval(_seqPollTimer);
+          _seqPollTimer = null;
+        }
+      }
+
       function renderMcpItems(items) {
         const el = document.getElementById("mcpItems");
         const list = Array.isArray(items) ? items : [];
@@ -2975,6 +3510,68 @@
             } catch (e) {
               if (result) result.textContent = `Error: ${e.message}`;
               log("MCP load error: " + e.message);
+              alert("Load failed: " + e.message);
+            } finally {
+              setBusy(btn, false);
+            }
+          });
+        });
+      }
+
+      async function postJsonRebuildIndex(categoryType) {
+        return post("/mcp/index/rebuild", {
+          category_type: String(categoryType || "all").trim() || "all",
+          max_paths: 2000,
+          max_items: 20000,
+          include_items: false,
+        });
+      }
+
+      function renderMcpIndexSearchItems(items) {
+        const el = document.getElementById("mcpIndexItems");
+        if (!el) return;
+        const list = Array.isArray(items) ? items : [];
+        if (!list.length) {
+          el.innerHTML = '<div style="font-size: 12px; color: var(--text-muted);">No matches.</div>';
+          return;
+        }
+        const rows = list.map((it) => {
+          const name = escapeHtml(it && it.name ? it.name : "(unnamed)");
+          const rawUri = it && it.uri != null ? String(it.uri) : "";
+          const enc = encodeURIComponent(rawUri);
+          const loadable = !!(it && it.is_loadable);
+          const cls = loadable ? "primary" : "secondary";
+          const disabled = loadable ? "" : "disabled";
+          return (
+            '<div style="display:flex; gap:10px; align-items:center; padding:8px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px; background:rgba(255,255,255,0.03);">' +
+            '<div style="flex:1; min-width:0;">' +
+            `<div style="font-weight:600; margin-bottom:4px;">${name}</div>` +
+            `<div style="font-size:12px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(rawUri) || "(no uri)"}</div>` +
+            "</div>" +
+            `<button class="${cls}" data-enc-uri="${enc}" ${disabled} data-busy-text="Loading...">Load</button>` +
+            "</div>"
+          );
+        }).join("\n");
+        el.innerHTML = rows;
+        el.querySelectorAll("button[data-enc-uri]").forEach((btn) => {
+          if (btn.dataset.bound === "1") return;
+          btn.dataset.bound = "1";
+          btn.addEventListener("click", async () => {
+            const enc = btn.getAttribute("data-enc-uri") || "";
+            const uri = decodeURIComponent(enc);
+            const trackIndex = parseInt(document.getElementById("mcpIndexTrackIndex")?.value || "0", 10);
+            const result = document.getElementById("mcpIndexResult");
+            setBusy(btn, true);
+            try {
+              const r = await post("/mcp/browser/load", { track_index: trackIndex, item_uri: uri });
+              if (!r || !r.ok) {
+                throw new Error((r && r.error) ? r.error : "load_failed");
+              }
+              if (result) result.textContent = `Loaded to track ${trackIndex}`;
+              log("MCP index search: loaded to track " + trackIndex);
+            } catch (e) {
+              if (result) result.textContent = "Error: " + e.message;
+              log("MCP index load: " + e.message);
               alert("Load failed: " + e.message);
             } finally {
               setBusy(btn, false);
@@ -3064,6 +3661,175 @@
           if (result) result.textContent = `Error: ${e.message}`;
           log("MCP items error: " + e.message);
           alert("List items failed: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("btnMcpIndexStatus")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnMcpIndexStatus");
+        const raw = document.getElementById("mcpIndexRaw");
+        const result = document.getElementById("mcpIndexResult");
+        setBusy(btn, true);
+        try {
+          const resp = await get("/mcp/index/status");
+          if (raw) raw.textContent = JSON.stringify(resp, null, 2);
+          if (result) {
+            result.textContent = resp && resp.ok
+              ? `OK · ${resp.item_count ?? 0} items`
+              : (resp && resp.error) || "error";
+          }
+        } catch (e) {
+          if (raw) raw.textContent = "";
+          if (result) result.textContent = "Error: " + e.message;
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("btnMcpIndexRebuild")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnMcpIndexRebuild");
+        const cat = document.getElementById("mcpIndexCategory")?.value || "all";
+        const raw = document.getElementById("mcpIndexRaw");
+        const result = document.getElementById("mcpIndexResult");
+        setBusy(btn, true);
+        try {
+          const resp = await postJsonRebuildIndex(cat);
+          if (raw) raw.textContent = JSON.stringify(resp, null, 2);
+          if (result) {
+            result.textContent = resp && resp.ok
+              ? `Rebuilt · ${resp.item_count ?? "?"} items`
+              : (resp && resp.error) || "failed";
+          }
+          if (resp && resp.ok) log("Browser index rebuilt (System)");
+        } catch (e) {
+          if (result) result.textContent = "Error: " + e.message;
+          log("Index rebuild: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("btnMcpIndexSearch")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnMcpIndexSearch");
+        const q = (document.getElementById("mcpIndexSearch")?.value || "").trim();
+        const raw = document.getElementById("mcpIndexRaw");
+        const result = document.getElementById("mcpIndexResult");
+        if (!q) {
+          alert("Enter a search term in the Search field.");
+          return;
+        }
+        setBusy(btn, true);
+        try {
+          const resp = await get("/mcp/index/search?q=" + encodeURIComponent(q) + "&limit=80");
+          if (raw) raw.textContent = JSON.stringify(resp, null, 2);
+          if (result) {
+            result.textContent = resp && resp.ok
+              ? `${resp.count ?? 0} hits`
+              : (resp && resp.error) || "error";
+          }
+          renderMcpIndexSearchItems(resp && resp.ok && Array.isArray(resp.items) ? resp.items : []);
+        } catch (e) {
+          if (result) result.textContent = "Error: " + e.message;
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("btnMcpAiApply")?.addEventListener("click", async () => {
+        const btn = document.getElementById("btnMcpAiApply");
+        const resEl = document.getElementById("mcpAiResult");
+        setBusy(btn, true);
+        try {
+          const style = (document.getElementById("mcpAiStyle")?.value || "").trim();
+          if (!style) {
+            alert("Select a style.");
+            return;
+          }
+          const body = {
+            style,
+            role: (document.getElementById("mcpAiRole")?.value || "drums").trim(),
+            track_index: int(document.getElementById("mcpAiTrackIndex")?.value || 0),
+            q: (document.getElementById("mcpAiQuery")?.value || "").trim() || null,
+            limit: int(document.getElementById("mcpAiLimit")?.value || 80),
+            prompt: (document.getElementById("mcpAiPrompt")?.value || "").trim() || null,
+            temperature: 0.25,
+          };
+          const resp = await post("/instruments/recommend_apply_from_index", body);
+          if (resEl) {
+            resEl.textContent = resp && resp.ok
+              ? ((resp.choice && (resp.choice.name || resp.choice.uri)) || "Applied")
+              : (resp && (resp.error || resp.hint)) || "failed";
+          }
+          log("MCP recommend_apply_from_index: " + (resp && resp.ok ? "ok" : (resp && resp.error)));
+        } catch (e) {
+          if (resEl) resEl.textContent = "Error: " + e.message;
+          log("recommend_apply_from_index: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("kbRefreshStyles")?.addEventListener("click", async () => {
+        const btn = document.getElementById("kbRefreshStyles");
+        const note = document.getElementById("knowledgeRefreshNote");
+        setBusy(btn, true);
+        try {
+          await loadKnowledge();
+          if (note) note.textContent = "Styles reloaded from disk.";
+          log("Styles reloaded (Knowledge)");
+        } catch (e) {
+          if (note) note.textContent = "Error: " + e.message;
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("kbRebuildIndex")?.addEventListener("click", async () => {
+        const btn = document.getElementById("kbRebuildIndex");
+        const note = document.getElementById("knowledgeRefreshNote");
+        setBusy(btn, true);
+        try {
+          const cat = document.getElementById("kbIndexCategory")?.value || "all";
+          const resp = await postJsonRebuildIndex(cat);
+          if (note) {
+            note.textContent = resp && resp.ok
+              ? "Browser index OK · " + (resp.item_count != null ? resp.item_count : "?") + " items · " + (resp.loadable_count != null ? resp.loadable_count : "?") + " loadable"
+              : "Index failed: " + ((resp && resp.error) || "unknown");
+          }
+          if (resp && resp.ok) log("Browser index rebuilt (Knowledge) · " + (resp.item_count || 0) + " items");
+        } catch (e) {
+          if (note) note.textContent = "Error: " + e.message;
+          log("Index rebuild: " + e.message);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+
+      document.getElementById("kbRefreshAll")?.addEventListener("click", async () => {
+        const btn = document.getElementById("kbRefreshAll");
+        const note = document.getElementById("knowledgeRefreshNote");
+        setBusy(btn, true);
+        try {
+          await loadKnowledge();
+          const cat = document.getElementById("kbIndexCategory")?.value || "all";
+          const resp = await postJsonRebuildIndex(cat);
+          if (note) {
+            const lines = ["Styles reloaded from disk."];
+            if (resp && resp.ok) {
+              lines.push(
+                "Browser index: " + (resp.item_count != null ? resp.item_count : "?") + " items (" + (resp.loadable_count != null ? resp.loadable_count : "?") + " loadable)."
+              );
+              if (resp.file) lines.push(String(resp.file));
+            } else {
+              lines.push("Browser index: " + ((resp && resp.error) || "failed"));
+            }
+            note.textContent = lines.join("\n");
+          }
+          if (resp && resp.ok) log("Knowledge refresh: styles + index OK");
+        } catch (e) {
+          if (note) note.textContent = "Error: " + e.message;
+          log("Refresh all: " + e.message);
         } finally {
           setBusy(btn, false);
         }
@@ -3164,10 +3930,23 @@
         const modal = document.getElementById("sequencersModal");
         if (modal) modal.classList.remove("active");
       }
-      document.getElementById("openSequencers")?.addEventListener("click", openSequencersModal);
-      document.getElementById("closeSequencers")?.addEventListener("click", closeSequencersModal);
+      document.getElementById("openSequencers")?.addEventListener("click", () => {
+        openSequencersModal();
+        const slot = int(document.getElementById('pairDrumSlot')?.value || 0);
+        refreshSequencersFromCache(slot).catch((e) => {
+          _setMeta('topDrumsMeta', `Slot ${slot} · Error: ${e.message}`);
+        });
+        _startSeqPoll();
+      });
+      document.getElementById("closeSequencers")?.addEventListener("click", () => {
+        closeSequencersModal();
+        _stopSeqPoll();
+      });
       document.getElementById("sequencersModal")?.addEventListener("click", (e) => {
-        if (e && e.target && e.target.id === "sequencersModal") closeSequencersModal();
+        if (e && e.target && e.target.id === "sequencersModal") {
+          closeSequencersModal();
+          _stopSeqPoll();
+        }
       });
 
       // Ensure composition is the initial view

@@ -364,7 +364,7 @@
     },
     "psytrance": {
       "tempo": 145,
-      "clip_slot": 7,
+      "clip_slot": 11,
       "kit": "909 Core Kit",
       "harmony_profile": {
         "harmonic_rhythm": "one_chord_per_bar",
@@ -514,7 +514,7 @@
       }
     },
     "tekno": {
-      "tempo": 175.0,
+      "tempo": 175,
       "clip_slot": 0,
       "kit": "909 Core Kit",
       "harmony_profile": {
@@ -566,6 +566,201 @@
         "timbre": "Overall: dark, raw, industrial, aggressive. Prefer mono/dirty/noisy textures; avoid bright, sparkly, plucky, bell-like sounds.",
         "mix": "Keep highs controlled (darker tilt), emphasize kick+bass weight; raw over polished."
       }
+    },
+    "happy_house": {
+      "tempo": 128,
+      "clip_slot": 10,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "I-V-vi-IV",
+            "degrees": [
+              1,
+              5,
+              6,
+              4
+            ]
+          },
+          {
+            "name": "I-IV-V",
+            "degrees": [
+              1,
+              4,
+              5
+            ]
+          },
+          {
+            "name": "I-vi-IV-V",
+            "degrees": [
+              1,
+              6,
+              4,
+              5
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "major",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "low",
+        "rhythm": "offbeat_8",
+        "note_pool": "root_fifth_octave",
+        "explain": "Happy house is upbeat and euphoric, often driven by a bright piano chord riff and an uplifting major-key feel. Keep the bass simple and bouncy on the offbeat to support the piano/vocal hook."
+      },
+      "recommendations": {
+        "drums": "4/4 house kick, bright claps, open hat on the offbeat; keep the groove upbeat and clean",
+        "bass": "warm, bouncy mono bass with clear sidechain/space for the kick",
+        "timbre": "big piano riffs/stabs, bright organ or synth chords, uplifting vocals and risers",
+        "mix": "keep it bright and energetic but avoid harsh highs; let the piano hook lead"
+      }
+    },
+    "detroit_house": {
+      "tempo": 128,
+      "clip_slot": 7,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VI-iv-V",
+            "degrees": [
+              1,
+              6,
+              4,
+              5
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          },
+          {
+            "name": "i-VII-VI-VII",
+            "degrees": [
+              1,
+              7,
+              6,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "medium",
+        "rhythm": "swingy_16",
+        "note_pool": "root_fifth_flat7_octave",
+        "explain": "Detroit house leans into a driving 4/4 foundation with shuffling hats, strong basslines, and jazzy/soulful chord stabs. Keep the bass rolling but not overly busy; let groove and swing do the work."
+      },
+      "recommendations": {
+        "drums": "909-style kick with sharp clap/snare and shuffling hats; add subtle percussion variations",
+        "bass": "warm, solid mono bass (Moog-ish) that locks to the kick; avoid overly acidic patterns",
+        "timbre": "Rhodes-style hooks, jazzy chord stabs, spacey pads/synth washes; tasteful disco/soul sampling works well",
+        "mix": "Punchy low-end, controlled highs; keep groove in-the-pocket and leave space for keys/chords"
+      }
+    },
+    "gabber": {
+      "tempo": 190,
+      "clip_slot": 12,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "tonic-stomp",
+            "degrees": [
+              1,
+              1,
+              1,
+              1
+            ]
+          },
+          {
+            "name": "i-bVII-stomp",
+            "degrees": [
+              1,
+              7,
+              1,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "high",
+        "rhythm": "steady_16",
+        "note_pool": "root_fifth_octave",
+        "explain": "Hard dance / gabber: bass is secondary to the kick\u2014short sub tails, roots and fifths only, no melodic wandering; leave headroom for distorted kick transients."
+      },
+      "recommendations": {
+        "drums": "Hard distorted 909-style kick as the main musical event; relentless 4/4 or classic gabber offbeat stomp; fast 16th closed hats; aggressive snare/clap; industrial percussion\u2014not house or techno swing.",
+        "bass": "Minimal monotone sub under kicks; distorted or saturated; very few pitches\u2014rumble on root, no jazzy walks or busy acid lines."
+      }
+    },
+    "folk_step": {
+      "tempo": 128,
+      "clip_slot": 13,
+      "kit": "909 Core Kit",
+      "harmony_profile": {
+        "harmonic_rhythm": "one_chord_per_bar",
+        "progressions": [
+          {
+            "name": "i-VI-III-VII",
+            "degrees": [
+              1,
+              6,
+              3,
+              7
+            ]
+          },
+          {
+            "name": "i-iv-VII",
+            "degrees": [
+              1,
+              4,
+              7
+            ]
+          }
+        ],
+        "voicing": "triads"
+      },
+      "bass_profile": {
+        "scale": "minor",
+        "octave_range": [
+          2,
+          3
+        ],
+        "density": "medium",
+        "rhythm": "straight_16",
+        "note_pool": "root_fifth_flat7_octave",
+        "explain": "Generated style 'folk step'. Base blend + user description: "
+      },
+      "recommendations": {
+        "drums": "909/808 style kit",
+        "bass": "mono bass / simple sub"
+      }
     }
   },
   "bass_defaults": {
@@ -610,6 +805,26 @@
       "octave": 0
     },
     "tekno": {
+      "root": 43,
+      "octave": 0
+    },
+    "happy_house": {
+      "root": 43,
+      "octave": 0
+    },
+    "detroit_house": {
+      "root": 43,
+      "octave": 0
+    },
+    "gabba": {
+      "root": 43,
+      "octave": 0
+    },
+    "gabber": {
+      "root": 43,
+      "octave": 0
+    },
+    "folk_step": {
       "root": 43,
       "octave": 0
     }

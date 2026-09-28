@@ -1,0 +1,199 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pulse Canvas</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell" id="appShell">
+    <header class="hero">
+      <div class="hero-copy">
+        <section class="hero-main">
+          <p class="eyebrow">Audio Reactive Prototype</p>
+          <h1>Pulse Canvas</h1>
+          <p class="lede">
+            Capture a browser tab, system audio, or a loopback input device, then generate
+            full-screen visuals that respond to bass, mids, treble, and overall energy in real time.
+          </p>
+          <div class="controls">
+            <button id="shareBtn" class="primary">Share Tab or System Audio</button>
+            <button id="deviceBtn" class="secondary">Use Audio Input Device</button>
+            <button id="fullscreenBtn" class="secondary">Fullscreen</button>
+            <button id="cinematicBtn" class="secondary">Cinematic Off</button>
+            <button id="stopBtn" class="secondary" disabled>Stop</button>
+          </div>
+          <p class="hint">
+            For browser playback, use the share flow. For the SoundCloud desktop app, pick a loopback
+            device such as <strong>Stereo Mix</strong> or <strong>VB-CABLE</strong>. Press <strong>F</strong>
+            to toggle fullscreen quickly.
+          </p>
+        </section>
+        <aside class="hero-preview-card">
+          <div class="hero-preview-head">
+            <span class="label">Live Preview</span>
+            <strong id="heroPreviewScene">Halo Ring</strong>
+          </div>
+          <div class="hero-preview-frame" id="heroPreviewFrame">
+            <canvas id="heroPreviewCanvas" aria-label="Mini visual preview"></canvas>
+          </div>
+        </aside>
+      </div>
+    </header>
+
+    <section class="status-panel status-panel--wide">
+      <div class="status-card">
+        <span class="label">Status</span>
+        <strong id="statusText">Idle</strong>
+      </div>
+      <div class="status-card">
+        <span class="label">Energy</span>
+        <strong id="energyText">0%</strong>
+      </div>
+      <div class="status-card">
+        <span class="label">Dominant</span>
+        <strong id="bandText">None</strong>
+      </div>
+      <div class="status-card">
+        <span class="label">Source</span>
+        <strong id="sourceText">None</strong>
+      </div>
+    </section>
+
+    <section class="device-panel">
+      <label class="device-picker" for="deviceSelect">
+        <span class="label">Audio Input Device</span>
+        <select id="deviceSelect"></select>
+      </label>
+      <button id="refreshDevicesBtn" class="secondary">Refresh Devices</button>
+    </section>
+
+    <section class="control-grid control-grid--triple">
+      <section class="theme-panel">
+        <span class="label">Visual Style</span>
+        <div class="theme-buttons">
+          <button class="theme-btn is-active" data-theme="aurora">Aurora</button>
+          <button class="theme-btn" data-theme="sunset">Sunset</button>
+          <button class="theme-btn" data-theme="noir">Noir Pulse</button>
+          <button class="theme-btn" data-theme="forest">Forest Glow</button>
+          <button class="theme-btn" data-theme="glacier">Glacier</button>
+          <button class="theme-btn" data-theme="ember">Ember</button>
+          <button class="theme-btn" data-theme="volt">Volt</button>
+          <button class="theme-btn" data-theme="solstice">Solstice</button>
+          <button class="theme-btn" data-theme="rose">Rose Glow</button>
+          <button class="theme-btn" data-theme="oceanic">Oceanic</button>
+          <button class="theme-btn" data-theme="starlight">Starlight</button>
+        </div>
+      </section>
+
+      <section class="scene-panel">
+        <span class="label">Scene</span>
+        <div class="scene-buttons">
+          <button class="scene-btn is-active" data-scene="halo">Halo Ring</button>
+          <button class="scene-btn" data-scene="tunnel">Neon Tunnel</button>
+          <button class="scene-btn" data-scene="constellation">Constellation</button>
+          <button class="scene-btn" data-scene="equalizer">Prism Bars</button>
+          <button class="scene-btn" data-scene="radialBars">Radar Bars</button>
+          <button class="scene-btn" data-scene="cityBars">City Bars</button>
+          <button class="scene-btn" data-scene="subwoofer">Subwoofer</button>
+          <button class="scene-btn" data-scene="waterfall">Waterfall Spectrum</button>
+          <button class="scene-btn" data-scene="laserClub">Laser Club</button>
+          <button class="scene-btn" data-scene="orbital">Orbital Lines</button>
+          <button class="scene-btn" data-scene="dualSub">Dual Sub Stack</button>
+        </div>
+      </section>
+
+      <section class="auto-panel">
+        <span class="label">Autoplay</span>
+        <div class="auto-stack">
+          <div class="auto-row">
+            <div class="auto-buttons">
+              <button id="autoOffBtn" class="auto-btn is-active" type="button">Off</button>
+              <button id="autoCycleBtn" class="auto-btn" type="button">Cycle</button>
+              <button id="autoRandomBtn" class="auto-btn" type="button">Random</button>
+              <button id="autoReactiveBtn" class="auto-btn" type="button">Reactive</button>
+            </div>
+          </div>
+          <div class="auto-row auto-row--meta">
+            <label class="speed-picker" for="autoIntervalSelect">
+              <span class="label">Every</span>
+              <select id="autoIntervalSelect">
+                <option value="5000">5s</option>
+                <option value="8000" selected>8s</option>
+                <option value="12000">12s</option>
+                <option value="20000">20s</option>
+              </select>
+            </label>
+            <button id="lockThemeBtn" class="secondary toggle-btn" type="button">Color Lock Off</button>
+          </div>
+        </div>
+      </section>
+    </section>
+
+    <section class="bass-panel">
+      <div class="bass-control">
+        <label for="bassSensitivityInput">
+          <span class="label">Bass Sensitivity</span>
+          <strong id="bassSensitivityValue">100%</strong>
+        </label>
+        <input id="bassSensitivityInput" type="range" min="60" max="180" value="100">
+      </div>
+      <div class="bass-control">
+        <label for="bassSizeInput">
+          <span class="label">Bass Size</span>
+          <strong id="bassSizeValue">100%</strong>
+        </label>
+        <input id="bassSizeInput" type="range" min="60" max="220" value="100">
+      </div>
+    </section>
+
+    <main class="visual-frame" id="visualFrame">
+      <canvas id="visualizer"></canvas>
+
+      <div class="visual-hud" id="visualHud">
+        <div class="hud-group">
+          <span class="hud-label">Scene</span>
+          <div class="hud-controls">
+            <button id="prevSceneBtn" class="hud-btn" type="button" aria-label="Previous scene">Prev</button>
+            <strong id="hudSceneName">Halo Ring</strong>
+            <button id="nextSceneBtn" class="hud-btn" type="button" aria-label="Next scene">Next</button>
+          </div>
+        </div>
+        <div class="hud-group">
+          <span class="hud-label">Style</span>
+          <div class="hud-controls">
+            <button id="prevThemeBtn" class="hud-btn" type="button" aria-label="Previous style">Prev</button>
+            <strong id="hudThemeName">Aurora</strong>
+            <button id="nextThemeBtn" class="hud-btn" type="button" aria-label="Next style">Next</button>
+          </div>
+        </div>
+        <div class="hud-group">
+          <span class="hud-label">Autoplay</span>
+          <div class="hud-controls">
+            <button id="hudAutoOffBtn" class="hud-btn is-active" type="button">Off</button>
+            <button id="hudAutoCycleBtn" class="hud-btn" type="button">Cycle</button>
+            <button id="hudAutoRandomBtn" class="hud-btn" type="button">Random</button>
+            <button id="hudAutoReactiveBtn" class="hud-btn" type="button">Reactive</button>
+            <strong id="hudAutoState">Manual</strong>
+          </div>
+        </div>
+        <div class="hud-group hud-group--actions">
+          <button id="hudLockThemeBtn" class="hud-btn" type="button">Color Lock Off</button>
+          <button id="hudCinematicBtn" class="hud-btn" type="button">Cinematic Off</button>
+          <button id="hudFullscreenBtn" class="hud-btn" type="button">Exit Fullscreen</button>
+          <span class="hud-tip">Arrows switch scenes. W/S switch styles. C toggles cinematic.</span>
+        </div>
+      </div>
+
+      <div class="overlay-copy">
+        <span>Loopback Ready</span>
+        <span>FFT Driven</span>
+        <span id="sceneLabel">Halo Ring</span>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
