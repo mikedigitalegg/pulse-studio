@@ -4,7 +4,8 @@ Pulse Studio is a web app for AI-assisted music making in Ableton Live. It gener
 
 ```
 Browser (pulse_studio.html)  ⇄  Python server (FastAPI, port 8005)  ⇄  PulseBridge Remote Script in Live (TCP 9880)
-                                         └── OpenAI API (pattern generation, voices)
+                                         └── AI provider: OpenAI, Anthropic or a local model (patterns)
+                                             OpenAI (voices)
 ```
 
 ## What you need
@@ -14,7 +15,7 @@ Browser (pulse_studio.html)  ⇄  Python server (FastAPI, port 8005)  ⇄  Pulse
 | **Ableton Live 11 or 12** | Any edition: Lite, Intro, Standard or Suite. No Max for Live needed. Live 12.0.5+ is needed for voice clips and samples to land as audio clips. |
 | **Python 3.10 or newer** | [python.org/downloads](https://www.python.org/downloads/). On Windows, tick "Add python.exe to PATH" in the installer. |
 | **Git** | To clone the repo ([git-scm.com](https://git-scm.com/downloads)). You can also download the ZIP from GitHub. |
-| **An OpenAI API key** | For pattern generation and voices. Create one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys). The app opens and controls Live without it, but the generators won't work. |
+| **An AI provider** | For pattern generation: an [OpenAI key](https://platform.openai.com/api-keys), an [Anthropic key](https://console.anthropic.com/settings/keys), or a local model server such as [Ollama](https://ollama.com) or [LM Studio](https://lmstudio.ai). Voices need an OpenAI key. The app opens and controls Live without any of these, but the generators won't work. |
 | **A modern browser** | Chrome, Edge, Firefox or Safari. |
 
 Windows and macOS are both supported.
@@ -48,9 +49,11 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 ```
 
-### 3. Add your OpenAI key
+### 3. Choose your AI provider
 
-Copy the example settings file and paste your key into it:
+The easiest way is in the app: once it's running (step 5), open **System → AI Provider**, pick OpenAI, Anthropic or Local, choose a model, paste your key and press **Test**. The key is saved to `.env` for you.
+
+Or set it up by hand. Copy the example settings file and paste your key into it:
 
 ```bash
 cp .env.example .env        # Windows PowerShell: Copy-Item .env.example .env
@@ -60,7 +63,10 @@ Then edit `.env`:
 
 ```
 OPENAI_API_KEY=sk-...
+# or ANTHROPIC_API_KEY=sk-ant-... and PULSE_AI_PROVIDER=anthropic
 ```
+
+For a local model, install Ollama, run `ollama pull llama3.1`, then pick **Local** on the System page (server URL `http://localhost:11434/v1`). Small local models make rougher patterns than the hosted ones.
 
 `.env` is git-ignored, so the key stays on your machine. See [Configuration](#configuration) for the optional settings.
 
@@ -118,15 +124,18 @@ Leave the `PS-TRK-…` track names as they are: Pulse uses them to recognise tra
 | **Perform** | Style pads, macro knobs and vox pads for playing live. Keys 1–8 fire the vox pads while the page is open. |
 | **Live Overview** | Transport, tempo, key and the tracks, devices and playing clips in your set, updated live. |
 | **Visualizer** | Animated scenes driven by Live's output meters (no microphone or audio routing). Pick a scene and theme, set it to change every 4/8/16 bars, or go fullscreen. |
-| **System** | Connection status, diagnostics, browser index tools and logs. |
+| **System** | AI provider and model, connection status, diagnostics, browser index tools and logs. |
 
 ## Configuration
 
-All settings go in `.env` (or real environment variables). Only `OPENAI_API_KEY` is needed.
+All settings go in `.env` (or real environment variables). You need a key for the AI provider you use (none for most local servers). The provider and model picked on the System page are saved in `ai_settings.json` and take priority over `PULSE_AI_PROVIDER` / `PULSE_AI_MODEL`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `OPENAI_API_KEY` | — | Pattern generation, instrument picks and voices. |
+| `OPENAI_API_KEY` | — | OpenAI provider, and voices (text-to-speech always uses OpenAI). |
+| `ANTHROPIC_API_KEY` | — | Anthropic provider. |
+| `PULSE_AI_PROVIDER` / `PULSE_AI_MODEL` | `openai` / provider default | Starting provider (`openai`, `anthropic` or `local`) and model, before anything is picked on the System page. |
+| `LOCAL_AI_BASE_URL` / `LOCAL_AI_API_KEY` | `http://localhost:11434/v1` / — | OpenAI-compatible local server (Ollama, LM Studio, vLLM...) and its key if it needs one. |
 | `PULSE_BRIDGE_HOST` / `PULSE_BRIDGE_PORT` | `127.0.0.1` / `9880` | Where the server finds PulseBridge. To change the port, set `PULSE_BRIDGE_PORT` as a system environment variable (not just in `.env`) so Live's copy of PulseBridge sees it too, then restart Live. |
 | `PULSE_USER_LIBRARY` | Found from Live's settings | Your Ableton User Library, used when voice clips fall back to a Simpler on older Live versions. |
 | `PULSE_OSC_DEFAULT_DRUM` / `PULSE_OSC_DEFAULT_MELODIC` | `Drum Rack` / `Wavetable` | Instruments put on empty tracks. On Live Intro/Lite, use one you own (e.g. `Simpler` or `Drift`). |
@@ -150,7 +159,9 @@ PulseBridge replaces both, and the server prefers it whenever it's connected. If
 
 **`[Errno 10048]` / "address already in use".** Something else is on port 8005, often an earlier server. Stop it, or start on another port (`--port 8006`) and open that instead.
 
-**Generating does nothing or reports `missing_openai_api_key`.** `.env` is missing or the key is empty. Fix it and restart the server.
+**Generating does nothing or reports `missing_ai_api_key`.** The selected provider has no key. Add one on **System → AI Provider** (or in `.env` and restart the server). **Test** there shows the provider's own error if the key or model is wrong.
+
+**Local model is slow or its patterns fail to parse.** Try a bigger model, or check the server URL ends in `/v1`. Requests to local servers wait up to 5 minutes.
 
 **Tracks are silent or an instrument is missing.** Lite and Intro don't include every instrument. Set `PULSE_OSC_DEFAULT_MELODIC` to one you have (e.g. `Drift` or `Simpler`). Lite allows 8 tracks and Intro 16, so large arrangements may not fit.
 
@@ -158,7 +169,7 @@ PulseBridge replaces both, and the server prefers it whenever it's connected. If
 
 ## Development
 
-Run the tests (they use fakes for Live and OpenAI, so Live doesn't need to be open):
+Run the tests (they use fakes for Live and the AI providers, so Live doesn't need to be open):
 
 ```bash
 python -m pip install pytest

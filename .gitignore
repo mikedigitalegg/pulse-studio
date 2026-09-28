@@ -8,3 +8,4 @@ ableton-mcp/
 .env
 .pulse_palette.json
 samples/
+ai_settings.json

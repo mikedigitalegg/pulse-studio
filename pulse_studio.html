@@ -536,6 +536,12 @@
       .viz-track-name { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .viz-bar { height: 8px; border-radius: 4px; background: var(--bg-input); border: 1px solid var(--border); overflow: hidden; }
       .viz-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--success), var(--accent)); border-radius: 4px; }
+      .viz-mini {
+        margin-top: 16px; border: 1px solid var(--border); border-radius: 8px;
+        overflow: hidden; background: #07080b; cursor: pointer; transition: border-color 0.2s;
+      }
+      .viz-mini:hover { border-color: var(--accent); }
+      #vizMiniCanvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
 
       /* Samples */
       .smp-drop {
@@ -591,6 +597,10 @@
         <div class="nav-item" data-view="system" onclick="switchView('system')">
           <span>System</span>
         </div>
+      </div>
+
+      <div class="viz-mini" title="Visualizer. Click to open." onclick="switchView('visualizer')">
+        <canvas id="vizMiniCanvas" aria-label="Mini visualizer driven by Live's output meters"></canvas>
       </div>
 
       <div class="transport-panel">
@@ -1196,6 +1206,45 @@
       <div id="view-system" class="view-section">
         <h2>System & Logs</h2>
 
+        <div class="card" id="aiCard">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <h4 style="margin: 0;">AI Provider</h4>
+            <span id="aiStatus" style="font-size: 12px; color: var(--text-muted);"></span>
+          </div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            Which AI writes patterns, picks instruments and generates styles. Voices always use OpenAI text-to-speech.
+          </p>
+
+          <div class="grid-3" style="margin-bottom: 12px;">
+            <div>
+              <label class="control-label" for="aiProvider">Provider</label>
+              <select id="aiProvider"></select>
+            </div>
+            <div>
+              <label class="control-label" for="aiModel">Model</label>
+              <select id="aiModel"></select>
+              <input id="aiModelCustom" type="text" placeholder="Model ID, e.g. llama3.1:8b" style="display: none; margin-top: 8px;" />
+            </div>
+            <div id="aiBaseWrap">
+              <label class="control-label" for="aiBaseUrl">Server URL</label>
+              <input id="aiBaseUrl" type="text" placeholder="http://localhost:11434/v1" />
+            </div>
+          </div>
+
+          <div style="margin-bottom: 12px;">
+            <label class="control-label" for="aiKey" id="aiKeyLabel">API key</label>
+            <input id="aiKey" type="password" autocomplete="off" />
+            <div id="aiKeyHelp" style="font-size: 12px; color: var(--text-muted); margin-top: 6px;"></div>
+          </div>
+
+          <div class="row">
+            <button id="btnAiSave" data-busy-text="Saving...">Save</button>
+            <button id="btnAiModels" class="secondary" data-busy-text="Fetching...">Refresh model list</button>
+            <button id="btnAiTest" class="secondary" data-busy-text="Testing...">Test</button>
+            <div id="aiResult" style="margin-left: auto; font-size: 12px; color: var(--text-muted);"></div>
+          </div>
+        </div>
+
         <div class="card">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
             <h4 style="margin: 0;">Live Connection</h4>
@@ -1418,7 +1467,7 @@
         <div class="card">
           <h4>Add a style</h4>
           <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
-            Name it, pick a style to start from, and describe what makes it different. <strong>Generate with AI</strong> writes a full definition (needs an OpenAI key).
+            Name it, pick a style to start from, and describe what makes it different. <strong>Generate with AI</strong> writes a full definition (uses the AI provider set on the System page).
             <strong>Copy base style</strong> copies the base as-is for you to tweak by hand. You can edit the draft before saving. Once saved, the style shows up in every style menu.
           </p>
 
@@ -1968,6 +2017,152 @@
           log("Status refresh failed: " + e.message);
         }
       }
+
+      // --- AI provider (System page) ---
+      const AI_CUSTOM = "__custom__";
+      let aiSettings = null;
+      const aiFetched = {};  // provider id -> model ids from the provider's own list
+
+      function aiProviderInfo(id) {
+        return (aiSettings?.providers || []).find(p => p.id === id) || null;
+      }
+
+      function aiRenderModels(p, selected) {
+        const sel = document.getElementById("aiModel");
+        const known = new Map(p.models.map(m => [m.id, m.label]));
+        for (const id of aiFetched[p.id] || []) if (!known.has(id)) known.set(id, id);
+        const opts = [...known].map(([id, label]) => `<option value="${escapeHtml(id)}">${escapeHtml(label)}</option>`);
+        opts.push(`<option value="${AI_CUSTOM}">Other (type a model ID)...</option>`);
+        sel.innerHTML = opts.join("");
+        const custom = document.getElementById("aiModelCustom");
+        if (selected && known.has(selected)) {
+          sel.value = selected;
+          custom.value = "";
+        } else {
+          sel.value = AI_CUSTOM;
+          custom.value = selected || "";
+        }
+        custom.style.display = sel.value === AI_CUSTOM ? "block" : "none";
+      }
+
+      function aiRenderProvider() {
+        const id = document.getElementById("aiProvider").value;
+        const p = aiProviderInfo(id);
+        if (!p) return;
+        aiRenderModels(p, p.model);
+        document.getElementById("aiBaseWrap").style.display = id === "local" ? "block" : "none";
+        document.getElementById("aiBaseUrl").value = aiSettings.local_base_url || "";
+        document.getElementById("aiKeyLabel").textContent = p.key_required ? "API key" : "API key (optional)";
+        const key = document.getElementById("aiKey");
+        key.value = "";
+        key.placeholder = p.key_set ? `Saved (${p.key_hint || "set"}). Paste a new one to replace it.` : "Paste your key";
+        document.getElementById("aiKeyHelp").innerHTML = id === "local"
+          ? `Runs on your own machine through any OpenAI-compatible server: Ollama (<code>http://localhost:11434/v1</code>) or LM Studio (<code>http://localhost:1234/v1</code>). Most need no key.`
+          : `Saved to <code>.env</code> as <code>${escapeHtml(p.key_env)}</code>. It is never shown again.`;
+      }
+
+      function aiRenderStatus() {
+        const p = aiProviderInfo(aiSettings?.provider);
+        const el = document.getElementById("aiStatus");
+        if (!p || !el) return;
+        const ready = p.key_set || !p.key_required;
+        el.textContent = `Using ${p.label} · ${p.model}${ready ? "" : " · no key yet"}`;
+        el.style.color = ready ? "var(--text-muted)" : "var(--danger)";
+      }
+
+      function aiApply(s) {
+        aiSettings = s;
+        const sel = document.getElementById("aiProvider");
+        sel.innerHTML = s.providers.map(p => `<option value="${p.id}">${escapeHtml(p.label)}</option>`).join("");
+        sel.value = s.provider;
+        aiRenderProvider();
+        aiRenderStatus();
+      }
+
+      function aiSetResult(text, isError) {
+        const el = document.getElementById("aiResult");
+        el.textContent = text;
+        el.style.color = isError ? "var(--danger)" : "var(--text-muted)";
+      }
+
+      function aiErrorText(r) {
+        if (r.error === "missing_ai_api_key") return r.hint || "Add an API key first.";
+        if (r.error === "ai_request_failed") return `Couldn't reach ${r.provider}: ${r.detail || "request failed"}`;
+        if (r.error === "ai_http_error") {
+          let msg = r.body || "";
+          try { msg = JSON.parse(msg).error?.message || msg; } catch (_) {}
+          return `${r.provider} said ${r.status}: ${String(msg).slice(0, 160)}`;
+        }
+        return r.error || "failed";
+      }
+
+      async function loadAiSettings() {
+        try {
+          aiApply(await get("/ai/settings"));
+        } catch (e) {
+          aiSetResult(e.message, true);
+        }
+      }
+
+      async function saveAiSettings() {
+        const sel = document.getElementById("aiModel");
+        const model = sel.value === AI_CUSTOM ? document.getElementById("aiModelCustom").value.trim() : sel.value;
+        const body = { provider: document.getElementById("aiProvider").value, model };
+        if (body.provider === "local") body.local_base_url = document.getElementById("aiBaseUrl").value.trim();
+        const key = document.getElementById("aiKey").value.trim();
+        if (key) body.api_key = key;
+        const r = await post("/ai/settings", body);
+        if (!r.ok) throw new Error(r.hint || r.error);
+        aiApply(r);
+      }
+
+      document.getElementById("aiProvider").addEventListener("change", aiRenderProvider);
+      document.getElementById("aiModel").addEventListener("change", (ev) => {
+        document.getElementById("aiModelCustom").style.display = ev.target.value === AI_CUSTOM ? "block" : "none";
+      });
+      document.getElementById("btnAiSave").addEventListener("click", async (ev) => {
+        setBusy(ev.currentTarget, true);
+        try {
+          await saveAiSettings();
+          aiSetResult("Saved.");
+        } catch (e) {
+          aiSetResult(e.message, true);
+        } finally {
+          setBusy(ev.currentTarget, false);
+        }
+      });
+      document.getElementById("btnAiModels").addEventListener("click", async (ev) => {
+        const btn = ev.currentTarget;
+        setBusy(btn, true);
+        try {
+          await saveAiSettings();  // the list comes from the saved key / server URL
+          const provider = aiSettings.provider;
+          const r = await get(`/ai/models?provider=${encodeURIComponent(provider)}`);
+          if (!r.ok) throw new Error(aiErrorText(r));
+          aiFetched[provider] = r.models;
+          aiRenderModels(aiProviderInfo(provider), aiProviderInfo(provider).model);
+          aiSetResult(r.models.length ? `${r.models.length} models available.` : "The server reported no models.");
+        } catch (e) {
+          aiSetResult(e.message, true);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+      document.getElementById("btnAiTest").addEventListener("click", async (ev) => {
+        const btn = ev.currentTarget;
+        setBusy(btn, true);
+        try {
+          await saveAiSettings();
+          const r = await post("/ai/test");
+          if (!r.ok) throw new Error(aiErrorText(r));
+          aiSetResult(`${r.model} replied in ${r.seconds}s: "${r.reply?.say || "ok"}"`);
+        } catch (e) {
+          aiSetResult(e.message, true);
+        } finally {
+          setBusy(btn, false);
+        }
+      });
+      loadAiSettings();
 
       window.renderStatus = renderStatus;
       window.setBusy = setBusy;
@@ -5818,9 +6013,11 @@
         }
 
         // ---------------------------------------------------------------- visualizer
-        // Meter frames arrive ~10 Hz from /live/events?meters=only, opened only while the
-        // Visualizer is on screen (so Live does no meter work otherwise). Drawing runs at the
-        // display rate with fast attack / slow release so 10 Hz data still moves smoothly.
+        // Meter frames arrive ~10 Hz from /live/events?meters=only, open whenever the page is
+        // visible and Live is connected, since the sidebar mini visualizer is always on screen.
+        // Drawing runs at the display rate with fast attack / slow release so 10 Hz data still
+        // moves smoothly. Scene state is shared, so each frame is drawn once: into the big
+        // canvas on the Visualizer view (then copied to the mini one), else into the mini one.
 
         const viz = {
           active: false, es: null, raf: 0,
@@ -5931,7 +6128,7 @@
         }
 
         function syncMeterStream() {
-          const want = viz.active && !document.hidden && connected();
+          const want = !document.hidden && connected();
           if (want && !viz.es) {
             viz.es = new EventSource(`${API_BASE}/live/events?meters=only`);
             viz.es.addEventListener("meters", (ev) => {
@@ -5942,7 +6139,7 @@
             viz.es = null;
             viz.target = { master: [0, 0], tracks: [] };
           }
-          if (viz.active && !viz.raf) viz.raf = requestAnimationFrame(drawViz);
+          if (!viz.raf) viz.raf = requestAnimationFrame(drawViz);
         }
 
         function ease(shown, target) {
@@ -5967,14 +6164,16 @@
 
         function drawViz(now) {
           viz.raf = 0;
-          if (!viz.active) return;
-          const canvas = $("vizCanvas");
+          if (document.hidden) return;  // visibilitychange restarts the loop
+          const mini = $("vizMiniCanvas");
+          const canvas = viz.active ? $("vizCanvas") : mini;
           const off = $("vizOffline");
-          if (off) {
+          if (off && viz.active) {
             off.style.display = connected() ? "none" : "block";
             if (!connected()) off.innerHTML = setupHtml();
           }
-          if (canvas) {
+          if (canvas && canvas.clientWidth) {
+            const small = canvas === mini;
             const css = getComputedStyle(document.documentElement);
             const accent = css.getPropertyValue("--accent").trim() || "#6366f1";
             const good = css.getPropertyValue("--success").trim() || "#10b981";
@@ -6044,7 +6243,7 @@
               ctx.beginPath(); ctx.arc(cx, cy, r0 * (0.35 + level * 0.25), 0, Math.PI * 2); ctx.fill();
 
               // Master L/R bars with peak hold, at both edges.
-              const barW = 14, pad = 24, top = 24, bh = h - 48;
+              const barW = small ? 6 : 14, pad = small ? 8 : 24, top = small ? 8 : 24, bh = h - (small ? 16 : 48);
               [["L", pad], ["R", w - pad - barW]].forEach(([label, x], c) => {
                 const v = viz.shown.master[c];
                 ctx.fillStyle = "rgba(255,255,255,0.05)";
@@ -6053,6 +6252,7 @@
                 ctx.fillRect(x, top + bh * (1 - v), barW, bh * v);
                 ctx.fillStyle = viz.peak[c].v > 0.92 ? hot : "#fff";
                 ctx.fillRect(x, top + bh * (1 - viz.peak[c].v) - 1, barW, 2);
+                if (small) return;
                 ctx.fillStyle = muted;
                 ctx.font = "11px Inter, sans-serif";
                 ctx.textAlign = "center";
@@ -6062,13 +6262,26 @@
 
             if (connected() && level === 0 && !(live.song && live.song.is_playing)) {
               ctx.fillStyle = viz.prefs.scene === "meters" ? muted : "rgba(237, 244, 255, 0.85)";
-              ctx.font = "13px Inter, sans-serif";
+              ctx.font = small ? "10px Inter, sans-serif" : "13px Inter, sans-serif";
               ctx.textAlign = "center";
-              ctx.fillText("Press play in Live", cx, cy + r0 * 2.2);
+              ctx.fillText("Press play in Live", cx, small ? h - 10 : cy + r0 * 2.2);
             }
+
+            if (!small && mini && mini.clientWidth) mirrorToMini(canvas, mini, dpr);
           }
-          renderVizTracks();
+          if (viz.active) renderVizTracks();
           viz.raf = requestAnimationFrame(drawViz);
+        }
+
+        function mirrorToMini(src, mini, dpr) {
+          // Centre-crop the big canvas to the mini one's aspect ratio.
+          const w = Math.round(mini.clientWidth * dpr), h = Math.round(mini.clientHeight * dpr);
+          if (mini.width !== w || mini.height !== h) { mini.width = w; mini.height = h; }
+          const scale = Math.max(w / src.width, h / src.height);
+          const sw = w / scale, sh = h / scale;
+          const m = mini.getContext("2d");
+          m.setTransform(1, 0, 0, 1, 0, 0);
+          m.drawImage(src, (src.width - sw) / 2, (src.height - sh) / 2, sw, sh, 0, 0, w, h);
         }
 
         const baseSwitchView = window.switchView;

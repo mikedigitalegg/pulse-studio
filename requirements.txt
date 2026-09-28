@@ -5,3 +5,4 @@ pydantic
 httpx
 python-multipart
 python-dotenv
+anthropic>=1.0

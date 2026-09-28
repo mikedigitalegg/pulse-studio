@@ -277,7 +277,7 @@ def test_split_json_objects_are_merged(monkeypatch):
     broken = '{"style":"tekno","drums":{"bars":1,"lanes":{"kick":[127,0,0,0]}}},{"bass":{"bars":1,"steps":[0,43]}},{"applied":{"summary":"x"}}'
     sent = []
     _fake_openai(monkeypatch, [broken], sent)
-    obj, meta = asyncio.run(srv._call_openai_async("sys JSON", "user", 0.7))
+    obj, meta = asyncio.run(srv._call_ai_async("sys JSON", "user", 0.7))
     assert meta["ok"], meta
     assert set(obj) == {"style", "drums", "bass", "applied"}
     assert sent[0]["response_format"] == {"type": "json_object"}
@@ -286,8 +286,8 @@ def test_split_json_objects_are_merged(monkeypatch):
 def test_unrecoverable_json_still_reports_bad_response(monkeypatch):
     sent = []
     _fake_openai(monkeypatch, ['{"a": 1,, }', '{"a": 1,, }'], sent)
-    obj, meta = asyncio.run(srv._call_openai_async("sys JSON", "user", 0.7))
-    assert obj is None and meta["error"] == "openai_bad_response"
+    obj, meta = asyncio.run(srv._call_ai_async("sys JSON", "user", 0.7))
+    assert obj is None and meta["error"] == "ai_bad_response"
     assert len(sent) == 2  # retried once
 
 
@@ -297,7 +297,7 @@ def test_failed_variation_falls_back_to_core(fake_ai, monkeypatch):
     async def flaky_pair(style, bars, drum_lanes, root, prompt, temperature):
         if fake_ai.pair_count >= 1:  # core succeeds, the Climax variation fails
             fake_ai.pair_count += 1
-            return None, {"ok": False, "error": "openai_bad_response"}
+            return None, {"ok": False, "error": "ai_bad_response"}
         return await real_pair(style, bars, drum_lanes, root, prompt, temperature)
 
     monkeypatch.setattr(srv, "_openai_generate_pair", flaky_pair)

@@ -3122,7 +3122,7 @@ async def _openai_generate_style_from_description(
         f"Base style B JSON (optional): {json.dumps(base_b_json) if base_b_json else 'null'}"
     )
 
-    obj, meta = await _call_openai_async(system, user, 0.4)
+    obj, meta = await _call_ai_async(system, user, 0.4)
     if not meta.get("ok"):
         return None, meta
 
@@ -5706,9 +5706,9 @@ async def _apply_instrument_palette(
 
     picks: dict[str, dict] = {}
     ai_meta = None
-    if cands and os.environ.get("OPENAI_API_KEY"):
+    if cands and _ai_configured():
         picks, ai_meta = await instrument_palette.ai_palette(
-            _call_openai_async, style=style, prompt=prompt, candidates=cands,
+            _call_ai_async, style=style, prompt=prompt, candidates=cands,
         )
     for role, pick in instrument_palette.heuristic_palette(cands).items():
         picks.setdefault(role, pick)
@@ -6009,7 +6009,7 @@ async def _openai_choose_item_from_index(*, style: str, role: str, candidates: l
         f"Return JSON like: {json.dumps(schema)}"
     )
 
-    obj, meta = await _call_openai_async(system, user, float(temperature))
+    obj, meta = await _call_ai_async(system, user, float(temperature))
     if not meta.get("ok"):
         return None, meta
     if not isinstance(obj, dict):
@@ -6259,7 +6259,7 @@ async def recommend_apply_from_index(req: RecommendFromBrowserIndexRequest):
         return {"ok": False, "error": "no_candidates", "hint": "Try rebuilding index with category_type=all and/or adjust role/q."}
 
     # Prefer AI if configured
-    if os.environ.get("OPENAI_API_KEY"):
+    if _ai_configured():
         pick, meta = await _openai_choose_item_from_index(
             style=style,
             role=role,
@@ -6440,7 +6440,7 @@ async def _openai_choose_instrument_from_list(
         f"Return JSON like: {json.dumps(schema)}"
     )
 
-    obj, meta = await _call_openai_async(system, user, temperature)
+    obj, meta = await _call_ai_async(system, user, temperature)
     if not meta.get("ok"):
         return None, meta
     if not isinstance(obj, dict):
@@ -6503,7 +6503,7 @@ async def recommend_instrument(req: RecommendInstrumentRequest):
         return {"ok": False, "error": "no_candidates", "hint": "Pass candidates[] or define instrument_catalog.<role> in knowledge/styles.json"}
 
     # Prefer AI when configured, otherwise use heuristic.
-    if os.environ.get("OPENAI_API_KEY"):
+    if _ai_configured():
         pick, meta = await _openai_choose_instrument_from_list(
             style=style,
             role=role,
@@ -6709,10 +6709,320 @@ def set_drums_knob(req: SetNamedKnobRequest):
     return _set_rack_macro(DRUMS_FX_RACK_TRACK_INDEX, DRUMS_FX_RACK_DEVICE_INDEX, macro, req.value) | {"knob": name}
 
 
-async def _call_openai_async(system: str, user: str, temperature: float):
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        return None, {"ok": False, "error": "missing_openai_api_key"}
+# ---------------------------------------------------------------- AI provider settings
+# Every text-generation call goes through _call_ai_async, which uses whichever provider the
+# user picked on the System page. Keys live in .env (the page can write them there); the
+# chosen provider/model live in ai_settings.json. Voices (TTS) stay on OpenAI.
+
+AI_SETTINGS_FILE = os.path.join(APP_DIR, "ai_settings.json")
+ENV_FILE = os.path.join(APP_DIR, ".env")
+
+AI_PROVIDERS: dict[str, dict] = {
+    "openai": {
+        "label": "OpenAI",
+        "key_env": "OPENAI_API_KEY",
+        "key_required": True,
+        "base_url": "https://api.openai.com/v1",
+        "default_model": "gpt-4o-mini",
+        "models": [
+            {"id": "gpt-4o-mini", "label": "GPT-4o mini (fast, cheap)"},
+            {"id": "gpt-4o", "label": "GPT-4o"},
+            {"id": "gpt-4.1-mini", "label": "GPT-4.1 mini"},
+            {"id": "gpt-4.1", "label": "GPT-4.1"},
+            {"id": "gpt-5-mini", "label": "GPT-5 mini"},
+            {"id": "gpt-5", "label": "GPT-5"},
+        ],
+    },
+    "anthropic": {
+        "label": "Anthropic",
+        "key_env": "ANTHROPIC_API_KEY",
+        "key_required": True,
+        "default_model": "claude-opus-5",
+        "models": [
+            {"id": "claude-opus-5", "label": "Claude Opus 5"},
+            {"id": "claude-opus-5-5", "label": "Claude Opus 5.5"},
+            {"id": "claude-sonnet-5", "label": "Claude Sonnet 5 (faster, cheaper)"},
+            {"id": "claude-haiku-4-5", "label": "Claude Haiku 4.5 (fastest)"},
+            {"id": "claude-fable-5-1", "label": "Claude Fable 5.1 (most capable, slowest)"},
+        ],
+    },
+    "local": {
+        "label": "Local (Ollama, LM Studio, ...)",
+        "key_env": "LOCAL_AI_API_KEY",
+        "key_required": False,
+        "base_url": "http://localhost:11434/v1",
+        "default_model": "llama3.1",
+        "models": [],  # whatever the local server has pulled; see /ai/models
+    },
+}
+
+
+def _ai_load_settings() -> dict:
+    s: dict = {}
+    try:
+        with open(AI_SETTINGS_FILE, "r", encoding="utf-8") as f:
+            s = json.load(f) or {}
+    except (OSError, ValueError):
+        s = {}
+    provider = str(s.get("provider") or os.environ.get("PULSE_AI_PROVIDER") or "openai").lower()
+    if provider not in AI_PROVIDERS:
+        provider = "openai"
+    models = s.get("models") if isinstance(s.get("models"), dict) else {}
+    if not s.get("provider") and os.environ.get("PULSE_AI_MODEL"):
+        models = {**models, provider: os.environ["PULSE_AI_MODEL"]}
+    base = s.get("local_base_url") or os.environ.get("LOCAL_AI_BASE_URL") or AI_PROVIDERS["local"]["base_url"]
+    return {"provider": provider, "models": models, "local_base_url": str(base).rstrip("/")}
+
+
+def _ai_save_settings(s: dict) -> None:
+    tmp = AI_SETTINGS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(s, f, indent=2)
+    os.replace(tmp, AI_SETTINGS_FILE)
+
+
+def _ai_config(provider: str | None = None) -> dict:
+    """Resolved settings for one provider (the selected one by default)."""
+    s = _ai_load_settings()
+    p = provider if provider in AI_PROVIDERS else s["provider"]
+    info = AI_PROVIDERS[p]
+    return {
+        "provider": p,
+        "model": str(s["models"].get(p) or info["default_model"]),
+        "base_url": s["local_base_url"] if p == "local" else info.get("base_url"),
+        "api_key": os.environ.get(info["key_env"]) or "",
+        "key_env": info["key_env"],
+        "key_required": info["key_required"],
+    }
+
+
+def _ai_configured() -> bool:
+    cfg = _ai_config()
+    return bool(cfg["api_key"]) or not cfg["key_required"]
+
+
+def _ai_http_error(provider: str, status: int, body: str) -> dict:
+    return {"ok": False, "error": "ai_http_error", "provider": provider, "status": status, "body": body}
+
+
+def _anthropic_takes_effort(model: str) -> bool:
+    # Haiku 4.5, Sonnet 4.5 and the Claude 3 family reject output_config.effort.
+    m = model.lower()
+    return not ("haiku" in m or "sonnet-4-5" in m or m.startswith("claude-3"))
+
+
+async def _anthropic_complete(cfg: dict, system: str, user: str) -> tuple[str | None, dict]:
+    import anthropic
+
+    kwargs: dict = {
+        "model": cfg["model"],
+        "max_tokens": 16000,
+        "system": system + "\n\nRespond with a single JSON object and nothing else.",
+        "messages": [{"role": "user", "content": user}],
+    }
+    # Patterns are short, well-specified jobs: low effort keeps them quick. Newer Claude models
+    # take no sampling temperature, so effort is the only dial here.
+    if _anthropic_takes_effort(cfg["model"]):
+        kwargs["output_config"] = {"effort": "low"}
+    client = anthropic.AsyncAnthropic(api_key=cfg["api_key"], timeout=180.0)
+    try:
+        try:
+            resp = await client.messages.create(**kwargs)
+        except anthropic.BadRequestError as e:
+            if "output_config" not in kwargs or "effort" not in str(e.message).lower():
+                raise
+            kwargs.pop("output_config")  # a model we don't know about yet
+            resp = await client.messages.create(**kwargs)
+    except anthropic.APIStatusError as e:
+        return None, _ai_http_error("anthropic", e.status_code, str(e.message))
+    except anthropic.APIConnectionError as e:
+        return None, {"ok": False, "error": "ai_request_failed", "provider": "anthropic", "detail": str(e)}
+    finally:
+        await client.close()
+    if resp.stop_reason == "refusal":
+        return None, {"ok": False, "error": "ai_refused", "provider": "anthropic"}
+    return "".join(b.text for b in resp.content if b.type == "text"), {"ok": True}
+
+
+async def _openai_compat_complete(cfg: dict, system: str, user: str, temperature: float) -> tuple[str | None, dict]:
+    """OpenAI's Chat Completions, which Ollama, LM Studio, vLLM etc. also speak."""
+    headers = {"Content-Type": "application/json"}
+    if cfg["api_key"]:
+        headers["Authorization"] = f"Bearer {cfg['api_key']}"
+    payload: dict = {
+        "model": cfg["model"],
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": float(temperature),
+        # JSON mode: the API guarantees one syntactically valid JSON object.
+        "response_format": {"type": "json_object"},
+    }
+    url = f"{cfg['base_url']}/chat/completions"
+    timeout = 60.0 if cfg["provider"] == "openai" else 300.0  # local models can be slow
+    for _ in range(3):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(url, json=payload, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+            return data["choices"][0]["message"]["content"], {"ok": True}
+        except httpx.HTTPStatusError as e:
+            try:
+                body = e.response.text
+            except Exception:
+                body = str(e)
+            # Some models only allow the default temperature, and some local servers have no
+            # JSON mode: drop whichever one the server complained about and try again.
+            low = body.lower()
+            if e.response.status_code == 400 and "temperature" in low and "temperature" in payload:
+                payload.pop("temperature")
+                continue
+            if e.response.status_code in (400, 422) and "response_format" in low and "response_format" in payload:
+                payload.pop("response_format")
+                continue
+            return None, _ai_http_error(cfg["provider"], e.response.status_code, body)
+        except (KeyError, IndexError, TypeError, ValueError) as e:
+            return "", {"ok": True, "detail": f"unexpected_response_shape: {e}"}
+        except Exception as e:
+            return None, {"ok": False, "error": "ai_request_failed", "provider": cfg["provider"], "detail": str(e)}
+    return None, {"ok": False, "error": "ai_request_failed", "provider": cfg["provider"], "detail": "retries_exhausted"}
+
+
+async def _ai_complete(cfg: dict, system: str, user: str, temperature: float) -> tuple[str | None, dict]:
+    if cfg["provider"] == "anthropic":
+        return await _anthropic_complete(cfg, system, user)
+    return await _openai_compat_complete(cfg, system, user, temperature)
+
+
+async def _ai_list_models(cfg: dict) -> tuple[list[str], dict]:
+    if cfg["key_required"] and not cfg["api_key"]:
+        return [], {"ok": False, "error": "missing_ai_api_key", "provider": cfg["provider"], "key_env": cfg["key_env"]}
+    if cfg["provider"] == "anthropic":
+        import anthropic
+
+        client = anthropic.AsyncAnthropic(api_key=cfg["api_key"], timeout=20.0)
+        try:
+            return [m.id async for m in client.models.list()], {"ok": True}
+        except anthropic.APIStatusError as e:
+            return [], _ai_http_error("anthropic", e.status_code, str(e.message))
+        except anthropic.APIConnectionError as e:
+            return [], {"ok": False, "error": "ai_request_failed", "provider": "anthropic", "detail": str(e)}
+        finally:
+            await client.close()
+
+    headers = {"Authorization": f"Bearer {cfg['api_key']}"} if cfg["api_key"] else {}
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(f"{cfg['base_url']}/models", headers=headers)
+            resp.raise_for_status()
+            ids = [str(m.get("id")) for m in (resp.json().get("data") or []) if m.get("id")]
+    except httpx.HTTPStatusError as e:
+        return [], _ai_http_error(cfg["provider"], e.response.status_code, e.response.text)
+    except Exception as e:
+        return [], {"ok": False, "error": "ai_request_failed", "provider": cfg["provider"], "detail": str(e)}
+    if cfg["provider"] == "openai":
+        # The list includes embeddings, audio, image models etc.; keep the chat ones.
+        skip = ("embed", "tts", "whisper", "audio", "realtime", "transcribe", "image", "dall-e",
+                "moderation", "search", "davinci", "babbage", "codex", "computer-use")
+        ids = [i for i in ids if i.startswith(("gpt-", "o1", "o3", "o4", "chatgpt")) and not any(s in i for s in skip)]
+    return sorted(ids), {"ok": True}
+
+
+def _ai_public_settings() -> dict:
+    s = _ai_load_settings()
+    providers = []
+    for pid, info in AI_PROVIDERS.items():
+        key = os.environ.get(info["key_env"]) or ""
+        providers.append({
+            "id": pid,
+            "label": info["label"],
+            "models": info["models"],
+            "default_model": info["default_model"],
+            "model": s["models"].get(pid) or info["default_model"],
+            "key_env": info["key_env"],
+            "key_required": info["key_required"],
+            "key_set": bool(key),
+            "key_hint": f"...{key[-4:]}" if len(key) >= 8 else "",
+        })
+    return {"ok": True, "provider": s["provider"], "local_base_url": s["local_base_url"], "providers": providers}
+
+
+class AISettingsRequest(BaseModel):
+    provider: str | None = None
+    model: str | None = None
+    local_base_url: str | None = None
+    # Written to .env under the provider's key variable. Never sent back to the page.
+    api_key: str | None = None
+
+
+@app.get("/ai/settings")
+def get_ai_settings():
+    return _ai_public_settings()
+
+
+@app.post("/ai/settings")
+def set_ai_settings(req: AISettingsRequest):
+    s = _ai_load_settings()
+    provider = (req.provider or s["provider"]).strip().lower()
+    if provider not in AI_PROVIDERS:
+        return {"ok": False, "error": "unknown_provider", "available": list(AI_PROVIDERS)}
+    s["provider"] = provider
+    if req.model is not None:
+        model = req.model.strip()
+        if model:
+            s["models"][provider] = model
+        else:
+            s["models"].pop(provider, None)
+    if req.local_base_url is not None:
+        base = req.local_base_url.strip().rstrip("/")
+        if base and not re.match(r"^https?://", base):
+            return {"ok": False, "error": "bad_base_url", "hint": "Start it with http:// or https://"}
+        s["local_base_url"] = base or AI_PROVIDERS["local"]["base_url"]
+    if req.api_key is not None and req.api_key.strip():
+        from dotenv import set_key
+
+        key_env = AI_PROVIDERS[provider]["key_env"]
+        if not os.path.exists(ENV_FILE):
+            open(ENV_FILE, "a", encoding="utf-8").close()
+        set_key(ENV_FILE, key_env, req.api_key.strip(), quote_mode="never")
+        os.environ[key_env] = req.api_key.strip()
+    _ai_save_settings(s)
+    return _ai_public_settings()
+
+
+@app.get("/ai/models")
+async def list_ai_models(provider: str | None = Query(None)):
+    cfg = _ai_config(provider)
+    ids, meta = await _ai_list_models(cfg)
+    return meta | {"provider": cfg["provider"], "models": ids}
+
+
+@app.post("/ai/test")
+async def test_ai():
+    cfg = _ai_config()
+    t0 = time.time()
+    obj, meta = await _call_ai_async(
+        'Reply with JSON: {"ok": true, "say": "<a five-word techno slogan>"}', "Go.", 0.7
+    )
+    return meta | {
+        "provider": cfg["provider"],
+        "model": cfg["model"],
+        "seconds": round(time.time() - t0, 2),
+        "reply": obj,
+    }
+
+
+async def _call_ai_async(system: str, user: str, temperature: float):
+    cfg = _ai_config()
+    if cfg["key_required"] and not cfg["api_key"]:
+        return None, {
+            "ok": False,
+            "error": "missing_ai_api_key",
+            "provider": cfg["provider"],
+            "hint": f"Add {cfg['key_env']} on the System page (AI Provider) or in .env.",
+        }
 
     def _extract_json_text(s: str) -> str:
         txt = str(s or "").strip()
@@ -6751,13 +7061,7 @@ async def _call_openai_async(system: str, user: str, temperature: float):
                 merged.update(x)
             return merged, candidate
 
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
     attempts = 0
-    last_data = None
     last_content = ""
     last_err: str | None = None
 
@@ -6772,33 +7076,12 @@ async def _call_openai_async(system: str, user: str, temperature: float):
             )
             temp = min(0.4, float(temperature))
 
-        payload = {
-            "model": "gpt-4o-mini",
-            "messages": [
-                {"role": "system", "content": sys_msg},
-                {"role": "user", "content": user},
-            ],
-            "temperature": float(temp),
-            # JSON mode: the API guarantees one syntactically valid JSON object.
-            "response_format": {"type": "json_object"},
-        }
+        content, meta = await _ai_complete(cfg, sys_msg, user, temp)
+        if content is None:
+            return None, meta
 
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                resp = await client.post("https://api.openai.com/v1/chat/completions", json=payload, headers=headers)
-                resp.raise_for_status()
-                last_data = resp.json()
-        except httpx.HTTPStatusError as e:
-            try:
-                body = e.response.text
-            except Exception:
-                body = str(e)
-            return None, {"ok": False, "error": "openai_http_error", "status": e.response.status_code, "body": body}
-        except Exception as e:
-            return None, {"ok": False, "error": "openai_request_failed", "detail": str(e)}
-
-        try:
-            last_content = last_data["choices"][0]["message"]["content"]
+            last_content = content
             obj, _ = _try_parse_json(last_content)
             return obj, {"ok": True}
         except Exception as e:
@@ -6811,7 +7094,8 @@ async def _call_openai_async(system: str, user: str, temperature: float):
 
     return None, {
         "ok": False,
-        "error": "openai_bad_response",
+        "error": "ai_bad_response",
+        "provider": cfg["provider"],
         "detail": last_err or "json_parse_failed",
         "content_snippet": snippet,
     }
@@ -6869,7 +7153,7 @@ async def _openai_generate_pattern(style: str, bars: int, prompt: str | None, te
         f"Extra prompt: {prompt or ''}"
     )
 
-    return await _call_openai_async(system, user, temperature)
+    return await _call_ai_async(system, user, temperature)
 
 
 async def _openai_generate_fx_pattern(style: str, bars: int, prompt: str | None, temperature: float, context: str | None = None):
@@ -6912,7 +7196,7 @@ async def _openai_generate_fx_pattern(style: str, bars: int, prompt: str | None,
         f"Extra prompt: {prompt or ''}"
     )
 
-    return await _call_openai_async(system, user, temperature)
+    return await _call_ai_async(system, user, temperature)
 
 
 async def _openai_generate_stabs_pattern(style: str, bars: int, prompt: str | None, temperature: float, context: str | None = None):
@@ -6955,7 +7239,7 @@ async def _openai_generate_stabs_pattern(style: str, bars: int, prompt: str | No
         f"Extra prompt: {prompt or ''}"
     )
 
-    return await _call_openai_async(system, user, temperature)
+    return await _call_ai_async(system, user, temperature)
 
 
 async def _openai_generate_perc_pattern(style: str, bars: int, prompt: str | None, temperature: float, context: str | None = None):
@@ -7000,7 +7284,7 @@ async def _openai_generate_perc_pattern(style: str, bars: int, prompt: str | Non
         f"Extra prompt: {prompt or ''}"
     )
 
-    return await _call_openai_async(system, user, temperature)
+    return await _call_ai_async(system, user, temperature)
 
 
 async def _openai_generate_pair(style: str, bars: int, drum_lanes: list[str], bass_root_midi: int, prompt: str | None, temperature: float):
@@ -7096,7 +7380,7 @@ async def _openai_generate_pair(style: str, bars: int, drum_lanes: list[str], ba
         f"Extra prompt: {prompt or ''}"
     )
 
-    return await _call_openai_async(system, user, temperature)
+    return await _call_ai_async(system, user, temperature)
 
 
 def _query_with_timeout(address: str, args: list, timeout_s: float = 0.6):
@@ -7476,7 +7760,7 @@ async def _openai_generate_bassline(style: str, bars: int, root_midi: int, promp
         f"Extra prompt: {prompt or ''}"
     )
 
-    return await _call_openai_async(system, user, temperature)
+    return await _call_ai_async(system, user, temperature)
 
 
 def _validate_pattern(pattern: dict, bars: int):
