@@ -4675,10 +4675,11 @@ async def _generate_pair_parts(req: "GenerateAIPairRequest", *, lock: dict | Non
     }
 
 
-def _finalize_pair_parts(parts: dict, style: str, chord_prog: dict | None) -> dict:
-    """Stamp one shared swing on every layer and pitch the stabs to the chords. Returns new dicts."""
+def _finalize_pair_parts(parts: dict, style: str, chord_prog: dict | None, rng: random.Random | None = None) -> dict:
+    """Vary the phrase ends, stamp one shared swing and the style's note chance/velocity spread on
+    every layer, and pitch the stabs to the chords. Returns new dicts."""
     swing = _style_swing(style)
-    out = dict(parts)
+    out = _stamp_note_variation(_apply_phrase_moves(dict(parts), style, rng or random.Random()), style)
     for key in ("drums", "bass", "perc", "stabs", "fx"):
         if isinstance(out.get(key), dict):
             out[key] = {**out[key], "swing": swing}
@@ -8593,6 +8594,196 @@ def _swung_start(step_index: int, swing: float) -> float:
     return start
 
 
+# Variation on top of a looped pattern, configured per style in groove.variation (merged over these defaults):
+#   chance: {lane: p}  Live's per-note chance on ghost hits (not anchors, accents or the lane's loudest hits),
+#                      so Live rolls the dice each time the clip loops and no two passes are identical.
+#   spread: {lane: n}  Live's velocity randomness, a range of n centred on each note's velocity ("bass" too).
+#   phrase_bars:       every this many bars, the last beat gets one small written-in move (0 turns moves off).
+#   drum_moves / bass_moves / stab_moves: which moves the style may use at a phrase end.
+DEFAULT_VARIATION = {
+    "chance": {"ch": 0.8, "oh": 0.9, "perc1": 0.75, "perc2": 0.75, "stab": 0.85},
+    "spread": {"ch": 14, "oh": 10, "perc1": 16, "perc2": 16, "stab": 10, "bass": 8},
+    "phrase_bars": 4,
+    "drum_moves": ["hat_roll", "snare_roll", "kick_gap", "perc_fill"],
+    "bass_moves": ["octave_up", "rest"],
+    "stab_moves": ["echo"],
+}
+
+
+def _style_variation(style: str) -> dict:
+    over = _style_groove(style).get("variation")
+    out = {**DEFAULT_VARIATION}
+    if isinstance(over, dict):
+        for key, val in over.items():
+            if key in ("chance", "spread") and isinstance(val, dict):
+                out[key] = {**DEFAULT_VARIATION[key], **val}
+            else:
+                out[key] = val
+    return out
+
+
+def _has_hits(lane: list | None) -> bool:
+    return isinstance(lane, list) and any(v > 0 for v in lane)
+
+
+def _ramp(lane: list, steps: range, lo: int, hi: int) -> None:
+    n = max(1, len(steps) - 1)
+    for k, i in enumerate(steps):
+        lane[i] = int(round(lo + (hi - lo) * k / n))
+
+
+def _drum_move(move: str, drums: dict | None, perc: dict | None, beat: range) -> bool:
+    """Apply one phrase-end move to the last beat of a bar. Only touches lanes already playing in this clip."""
+    dl = (drums or {}).get("lanes") or {}
+    if move == "hat_roll" and _has_hits(dl.get("ch")):
+        _ramp(dl["ch"], beat, 70, 110)
+    elif move == "snare_roll":
+        lane = next((dl[k] for k in ("snare", "clap") if _has_hits(dl.get(k))), None)
+        if lane is None:
+            return False
+        _ramp(lane, beat, 75, 118)
+    elif move == "kick_gap" and _has_hits(dl.get("kick")) and any(dl["kick"][i] > 0 for i in beat):
+        for i in beat:
+            dl["kick"][i] = 0
+    elif move == "perc_fill":
+        pl = (perc or {}).get("lanes") or {}
+        lane = next((pl[k] for k in ("perc1", "perc2") if _has_hits(pl.get(k))), None)
+        if lane is None:
+            return False
+        for i in beat:
+            lane[i] = 0
+        lane[beat[1]] = 85
+        lane[beat[3]] = 100
+    else:
+        return False
+    return True
+
+
+def _bass_move(move: str, bass: dict | None, beat: range) -> bool:
+    if not isinstance(bass, dict):
+        return False
+    steps, vels = bass.get("steps") or [], bass.get("velocities") or []
+    hits = [i for i in beat if i < len(steps) and steps[i] > 0]
+    if not hits:
+        return False
+    if move == "octave_up" and steps[hits[-1]] + 12 <= 127:
+        steps[hits[-1]] += 12
+    elif move == "rest":
+        for i in hits:
+            steps[i] = 0
+            vels[i] = 0
+    else:
+        return False
+    return True
+
+
+def _stab_move(move: str, stabs: dict | None, beat: range) -> bool:
+    lane = ((stabs or {}).get("lanes") or {}).get("stab")
+    if move != "echo" or not _has_hits(lane):
+        return False
+    bar_start = beat[0] - 12
+    before = [i for i in range(bar_start, beat[2]) if lane[i] > 0]
+    if not before or lane[beat[2]] > 0:
+        return False
+    lane[beat[2]] = max(1, int(round(lane[before[-1]] * 0.7)))
+    return True
+
+
+def _apply_phrase_moves(parts: dict, style: str, rng: random.Random) -> dict:
+    """Vary the last beat of each phrase so a long clip isn't one bar tiled. Returns new dicts.
+
+    The clip's last bar always gets a drum move; earlier phrase ends get one 60% of the time.
+    Bass and stab moves ride along at 50% and 35%. Each touched part records the steps it changed
+    in "phrase_steps" so the chance layer leaves those hits alone.
+    """
+    cfg = _style_variation(style)
+    drums = parts.get("drums")
+    clip_bars = int((drums or parts.get("bass") or {}).get("bars", 1) or 1)
+    phrase = min(int(cfg.get("phrase_bars") or 0), clip_bars)
+    if phrase < 1 or clip_bars < 2:
+        return parts
+
+    out = dict(parts)
+    for key in ("drums", "perc", "stabs"):
+        if isinstance(out.get(key), dict):
+            out[key] = {**out[key], "lanes": {k: list(v) for k, v in (out[key].get("lanes") or {}).items()}}
+    if isinstance(out.get("bass"), dict):
+        out["bass"] = {**out["bass"], "steps": list(out["bass"].get("steps") or []), "velocities": list(out["bass"].get("velocities") or [])}
+
+    touched: dict[str, set] = {"drums": set(), "perc": set(), "bass": set(), "stabs": set()}
+    for bar in range(phrase - 1, clip_bars, phrase):
+        if bar != clip_bars - 1 and rng.random() >= 0.6:
+            continue
+        beat = range(bar * 16 + 12, bar * 16 + 16)
+        moves = list(cfg.get("drum_moves") or [])
+        rng.shuffle(moves)
+        for move in moves:
+            if _drum_move(move, out.get("drums"), out.get("perc"), beat):
+                touched["perc" if move == "perc_fill" else "drums"].update(beat)
+                break
+        if rng.random() < 0.5 and cfg.get("bass_moves") and _bass_move(rng.choice(cfg["bass_moves"]), out.get("bass"), beat):
+            touched["bass"].update(beat)
+        if rng.random() < 0.35 and cfg.get("stab_moves") and _stab_move(rng.choice(cfg["stab_moves"]), out.get("stabs"), beat):
+            touched["stabs"].update(beat)
+
+    for key, steps in touched.items():
+        if steps and isinstance(out.get(key), dict):
+            out[key] = {**out[key], "phrase_steps": sorted(steps)}
+    return out
+
+
+def _note_chance(pattern: dict, style: str, chance: dict) -> dict[str, list[float]]:
+    """Per-step chance for each lane's ghost hits; the groove's anchors, accents and loudest hits always play."""
+    g = _style_groove(style)
+    anchors = g.get("anchors") or {}
+    accents = g.get("accents") or {}
+    fixed = set(pattern.get("phrase_steps") or [])
+    out = {}
+    for lane, values in (pattern.get("lanes") or {}).items():
+        p = chance.get(lane)
+        if not isinstance(p, (int, float)) or p >= 1.0 or not _has_hits(values):
+            continue
+        loud = max(values) * 0.95
+        spec = anchors.get(lane) if isinstance(anchors.get(lane), dict) else None
+        strong = set(int(x) for x in accents.get(lane) or [])
+        probs = [1.0] * len(values)
+        for i, v in enumerate(values):
+            firm = v <= 0 or v >= loud or i in fixed or (i % 16) in strong or (spec is not None and _anchor_on(spec, i))
+            if not firm:
+                probs[i] = max(0.05, float(p))
+        if any(x < 1.0 for x in probs):
+            out[lane] = probs
+    return out
+
+
+def _stamp_note_variation(parts: dict, style: str) -> dict:
+    """Attach Live's per-note chance and velocity spread to each part, for the writers to pass through."""
+    cfg = _style_variation(style)
+    spread = {k: int(v) for k, v in (cfg.get("spread") or {}).items() if isinstance(v, (int, float)) and v > 0}
+    out = dict(parts)
+    for key in ("drums", "perc", "stabs"):
+        pat = out.get(key)
+        if not isinstance(pat, dict):
+            continue
+        lanes = pat.get("lanes") or {}
+        out[key] = {
+            **pat,
+            "chance": _note_chance(pat, style, cfg.get("chance") or {}),
+            "spread": {lane: spread[lane] for lane in lanes if lane in spread},
+        }
+    if isinstance(out.get("bass"), dict) and spread.get("bass"):
+        out["bass"] = {**out["bass"], "spread": spread["bass"]}
+    return out
+
+
+def _add_note(track_index: int, clip_slot_index: int, pitch: int, start: float, duration: float, vel: int,
+              chance: float = 1.0, spread: int = 0):
+    if chance >= 1.0 and spread <= 0:
+        ctrl.add_note(track_index, clip_slot_index, pitch, start, duration, vel)
+    else:
+        ctrl.add_note(track_index, clip_slot_index, pitch, start, duration, vel, probability=chance, velocity_spread=spread)
+
+
 def _write_pattern_to_ableton(track_index: int, clip_slot_index: int, pattern: dict):
     bars = int(pattern["bars"])
     length_beats = float(bars * 4)
@@ -8600,23 +8791,29 @@ def _write_pattern_to_ableton(track_index: int, clip_slot_index: int, pattern: d
 
     swing = _clamp_swing(pattern.get("swing"))
     voicings = pattern.get("voicings") if isinstance(pattern.get("voicings"), list) else None
+    chances = pattern.get("chance") if isinstance(pattern.get("chance"), dict) else {}
+    spreads = pattern.get("spread") if isinstance(pattern.get("spread"), dict) else {}
     # On a Drum Rack, hit the pads by name (kick -> the kit's "Kick" pad) rather than fixed GM notes.
     pad_notes = _DRUM_MAPS.get(track_index)
     for lane, steps in pattern["lanes"].items():
         pitch = pad_notes.get(lane, LANE_TO_MIDI_NOTE[lane])
+        lane_chance = chances.get(lane) if isinstance(chances.get(lane), list) else None
+        spread = int(spreads.get(lane) or 0)
         for i, vel in enumerate(steps):
             if vel <= 0:
                 continue
             start = _swung_start(i, swing)
+            chance = float(lane_chance[i]) if lane_chance and i < len(lane_chance) else 1.0
             duration = 0.10
             if lane in {"kick", "snare", "clap"}:
                 duration = 0.20
             if lane == "stab" and voicings:
                 # Pitched stabs: play the chord for this bar so stabs sit in key with bass and chords.
+                # No chance here: Live rolls it per note, which would drop single notes out of the chord.
                 for note in voicings[(i // 16) % len(voicings)]:
-                    ctrl.add_note(track_index, clip_slot_index, int(note), start, 0.20, vel)
+                    _add_note(track_index, clip_slot_index, int(note), start, 0.20, vel, 1.0, spread)
                 continue
-            ctrl.add_note(track_index, clip_slot_index, pitch, start, duration, vel)
+            _add_note(track_index, clip_slot_index, pitch, start, duration, vel, chance, spread)
 
 
 def _write_bassline_to_ableton(track_index: int, clip_slot_index: int, bass: dict):
@@ -8627,13 +8824,14 @@ def _write_bassline_to_ableton(track_index: int, clip_slot_index: int, bass: dic
     steps = bass["steps"]
     vels = bass["velocities"]
     swing = _clamp_swing(bass.get("swing"))
+    spread = int(bass.get("spread") or 0)
 
     for i, (note, vel) in enumerate(zip(steps, vels)):
         if note <= 0 or vel <= 0:
             continue
         start = _swung_start(i, swing)
         duration = 0.22
-        ctrl.add_note(track_index, clip_slot_index, int(note), start, duration, int(vel))
+        _add_note(track_index, clip_slot_index, int(note), start, duration, int(vel), 1.0, spread)
 
 
 def _snap_bass_to_chords(bass: dict, chord_prog: dict):

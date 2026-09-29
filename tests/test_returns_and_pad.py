@@ -57,7 +57,7 @@ def test_busy_sections_get_a_quieter_two_note_pad():
 def test_pad_is_written_as_held_notes(monkeypatch):
     notes = []
     monkeypatch.setattr(srv, "ctrl", types.SimpleNamespace(
-        create_clip=lambda *a: None, add_note=lambda t, s, p, st, d, v: notes.append((t, p, st, d, v))))
+        create_clip=lambda *a: None, add_note=lambda t, s, p, st, d, v, **kw: notes.append((t, p, st, d, v))))
     prog, vel = srv._pad_part(PROG, "Intro", 4, 80)
     srv._write_chords_to_ableton(srv.PAD_TRACK_INDEX, 0, prog, vel)
     assert notes == [(srv.PAD_TRACK_INDEX, p, 0.0, 16.0, 64) for p in (70, 74, 77)]

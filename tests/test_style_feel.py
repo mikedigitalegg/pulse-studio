@@ -41,7 +41,7 @@ class FakeCtrl:
     def create_clip(self, *a):
         pass
 
-    def add_note(self, track, slot, pitch, start, duration, vel):
+    def add_note(self, track, slot, pitch, start, duration, vel, **kw):
         self.notes.append((pitch, start, duration, vel))
 
 

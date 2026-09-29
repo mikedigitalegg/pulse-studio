@@ -337,6 +337,24 @@
             10,
             14
           ]
+        },
+        "variation": {
+          "chance": {
+            "ch": 0.7,
+            "oh": 0.85,
+            "snare": 0.6,
+            "perc1": 0.65,
+            "perc2": 0.65
+          },
+          "spread": {
+            "ch": 18,
+            "snare": 20
+          },
+          "drum_moves": [
+            "snare_roll",
+            "hat_roll",
+            "kick_gap"
+          ]
         }
       }
     },
@@ -433,6 +451,24 @@
             6,
             10,
             14
+          ]
+        },
+        "variation": {
+          "chance": {
+            "ch": 0.7,
+            "oh": 0.85,
+            "snare": 0.6,
+            "perc1": 0.65,
+            "perc2": 0.65
+          },
+          "spread": {
+            "ch": 18,
+            "snare": 20
+          },
+          "drum_moves": [
+            "snare_roll",
+            "hat_roll",
+            "kick_gap"
           ]
         }
       }
@@ -533,6 +569,22 @@
             11,
             15
           ]
+        },
+        "variation": {
+          "chance": {
+            "ch": 0.75,
+            "perc1": 0.7,
+            "perc2": 0.7
+          },
+          "spread": {
+            "ch": 18,
+            "bass": 10
+          },
+          "drum_moves": [
+            "hat_roll",
+            "kick_gap",
+            "perc_fill"
+          ]
         }
       }
     },
@@ -618,6 +670,21 @@
             6,
             11,
             14
+          ]
+        },
+        "variation": {
+          "chance": {
+            "perc1": 0.8,
+            "perc2": 0.7
+          },
+          "spread": {
+            "perc1": 20,
+            "perc2": 20
+          },
+          "drum_moves": [
+            "perc_fill",
+            "kick_gap",
+            "hat_roll"
           ]
         }
       }
@@ -875,6 +942,19 @@
             6,
             10,
             14
+          ]
+        },
+        "variation": {
+          "chance": {
+            "ch": 0.85
+          },
+          "drum_moves": [
+            "hat_roll",
+            "kick_gap",
+            "perc_fill"
+          ],
+          "bass_moves": [
+            "rest"
           ]
         }
       }
@@ -1216,7 +1296,22 @@
             14
           ]
         },
-        "kick_room": 0.7
+        "kick_room": 0.7,
+        "variation": {
+          "chance": {
+            "ch": 0.9,
+            "perc1": 0.85,
+            "perc2": 0.85
+          },
+          "spread": {
+            "ch": 10
+          },
+          "drum_moves": [
+            "hat_roll",
+            "kick_gap",
+            "snare_roll"
+          ]
+        }
       },
       "drum_bus": {
         "chain": [
@@ -1540,7 +1635,22 @@
             14
           ]
         },
-        "kick_room": 0.7
+        "kick_room": 0.7,
+        "variation": {
+          "chance": {
+            "ch": 0.9,
+            "perc1": 0.85,
+            "perc2": 0.85
+          },
+          "spread": {
+            "ch": 10
+          },
+          "drum_moves": [
+            "hat_roll",
+            "kick_gap",
+            "snare_roll"
+          ]
+        }
       },
       "drum_bus": {
         "chain": [

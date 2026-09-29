@@ -119,6 +119,28 @@ class LiveLink(AbletonController):
                 pass  # dropped mid-call: fall through to OSC
         super().send(address, args)
 
+    def add_note(self, track_index, clip_slot_index, pitch, start_time, duration, velocity=100, mute=False,
+                 probability=1.0, velocity_spread=0):
+        """Like AbletonController.add_note, plus Live's per-note chance and velocity randomness.
+
+        velocity_spread is a range centred on velocity (Live's deviation only goes one way, so the
+        note is written spread/2 lower with a deviation of +spread). Only the bridge can set these;
+        over OSC the note is written plain.
+        """
+        if (probability < 1.0 or velocity_spread > 0) and self.bridge.connected:
+            spread = max(0, int(velocity_spread))
+            note = {
+                "pitch": int(pitch), "start_time": float(start_time), "duration": float(duration),
+                "velocity": float(max(1, min(127, int(velocity) - spread // 2))), "mute": bool(mute),
+                "probability": float(probability), "velocity_deviation": float(spread),
+            }
+            try:
+                self.bridge.send("add_notes", {"track_index": int(track_index), "clip_slot_index": int(clip_slot_index), "notes": [note]})
+                return
+            except BridgeUnavailable:
+                pass
+        super().add_note(track_index, clip_slot_index, pitch, start_time, duration, velocity, mute)
+
     def query(self, address: str, args: list | None = None, timeout_s: float = 1.0) -> dict | None:
         """
         Answer an AbletonOSC-style query through the bridge, in the same

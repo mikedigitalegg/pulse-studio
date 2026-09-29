@@ -30,7 +30,7 @@ class FakeCtrl:
     def create_clip(self, track, slot, length):
         self.clips[(track, slot)] = []
 
-    def add_note(self, track, slot, pitch, start, duration, vel):
+    def add_note(self, track, slot, pitch, start, duration, vel, **kw):
         self.clips.setdefault((track, slot), []).append((pitch, start, duration, vel))
 
     def send(self, *a, **k):
@@ -48,6 +48,12 @@ def fake_ctrl(monkeypatch):
     fc = FakeCtrl()
     monkeypatch.setattr(srv, "ctrl", fc)
     return fc
+
+
+@pytest.fixture
+def no_phrase_moves(monkeypatch):
+    """Phrase-end moves are random per scene; switch them off where a test compares scenes note for note."""
+    monkeypatch.setattr(srv, "_apply_phrase_moves", lambda parts, style, rng: parts)
 
 
 # ---------------------------------------------------------------- swing + stabs
@@ -196,7 +202,7 @@ def _run_full(style):
     return asyncio.run(srv.generate_full_track(req))
 
 
-def test_full_track_scenes_share_core_groove(fake_ai):
+def test_full_track_scenes_share_core_groove(fake_ai, no_phrase_moves):
     res = _run_full("techno")
     assert res["ok"], res
     slots = {s["name"]: s["slot"] for s in res["scenes"]}
@@ -305,7 +311,7 @@ def test_unrecoverable_json_still_reports_bad_response(monkeypatch):
     assert len(sent) == 2  # retried once
 
 
-def test_failed_variation_falls_back_to_core(fake_ai, monkeypatch):
+def test_failed_variation_falls_back_to_core(fake_ai, monkeypatch, no_phrase_moves):
     real_pair = fake_ai.pair
 
     async def flaky_pair(style, bars, drum_lanes, root, prompt, temperature):
