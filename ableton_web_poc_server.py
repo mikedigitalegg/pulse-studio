@@ -8,6 +8,7 @@ import io
 import wave
 import math
 import asyncio
+import contextlib
 import httpx
 import re
 import shutil
@@ -8054,9 +8055,12 @@ class _EventFanout:
     Live is only asked to stream meters while at least one subscriber wants them.
     """
 
+    CLOSE = ("", None)  # queued to every stream on shutdown
+
     def __init__(self):
         self.lock = threading.Lock()
         self.subscribers: set[tuple[asyncio.AbstractEventLoop, asyncio.Queue, str]] = set()
+        self.closed = False
 
     def add(self, sub):
         with self.lock:
@@ -8091,16 +8095,61 @@ class _EventFanout:
             except RuntimeError:
                 pass  # loop closed
 
+    def close_all(self):
+        """End every open stream, so server shutdown isn't held up waiting for browser tabs to disconnect."""
+        self.closed = True
+        with self.lock:
+            subs = list(self.subscribers)
+        for loop, q, _ in subs:
+            try:
+                loop.call_soon_threadsafe(self._offer, q, self.CLOSE)
+            except RuntimeError:
+                pass
+
     @staticmethod
     def _offer(q: asyncio.Queue, item):
         try:
             q.put_nowait(item)
         except asyncio.QueueFull:
-            pass  # slow browser tab: drop rather than buffer forever
+            pass  # slow browser tab: drop rather than buffer forever (the stream still sees .closed)
 
 
 EVENT_FANOUT = _EventFanout()
 BRIDGE.on_event(EVENT_FANOUT.publish)
+
+
+def _close_event_streams_on_exit():
+    """Chain onto uvicorn's Ctrl+C handler to end the /live/events streams first.
+
+    uvicorn waits for open connections to finish before it runs any shutdown hooks, and an event
+    stream never finishes on its own, so without this "Waiting for connections to close" hangs
+    for as long as a Pulse Studio tab is open.
+    """
+    import signal
+
+    if threading.current_thread() is not threading.main_thread():
+        return  # signals can only be handled on the main thread (e.g. under a test client)
+    for sig in (signal.SIGINT, signal.SIGTERM, getattr(signal, "SIGBREAK", None)):
+        if sig is None:
+            continue
+        previous = signal.getsignal(sig)
+        if not callable(previous):
+            continue
+
+        def handler(signum, frame, previous=previous):
+            EVENT_FANOUT.close_all()
+            previous(signum, frame)
+
+        signal.signal(sig, handler)
+
+
+@contextlib.asynccontextmanager
+async def _lifespan(_app):
+    _close_event_streams_on_exit()
+    yield
+
+
+app.router.lifespan_context = _lifespan
 
 
 @app.get("/live/events")
@@ -8120,12 +8169,15 @@ async def live_events(meters: str = "0"):
             hello = {"connected": BRIDGE.connected, "hello": BRIDGE.hello}
             if mode != "meters":
                 yield f"event: bridge.status\ndata: {json.dumps(hello)}\n\n"
-            while True:
+            while not EVENT_FANOUT.closed:
                 try:
-                    event, data = await asyncio.wait_for(q.get(), timeout=15.0)
+                    item = await asyncio.wait_for(q.get(), timeout=15.0)
                 except asyncio.TimeoutError:
                     yield ": keepalive\n\n"
                     continue
+                if item is EVENT_FANOUT.CLOSE:
+                    break
+                event, data = item
                 yield f"event: {event}\ndata: {json.dumps(data)}\n\n"
         finally:
             EVENT_FANOUT.discard(sub)
