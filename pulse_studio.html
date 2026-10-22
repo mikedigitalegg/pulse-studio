@@ -736,7 +736,7 @@
         </div>
         <div class="modal-body">
           <div class="sub-tabs">
-            <button class="sub-tab active" onclick="switchSubTab(this, 'modal-tab-drums')">Drums</button>
+            <button class="sub-tab active" onclick="switchSubTab(this, 'modal-tab-drums')">Kick</button>
             <button class="sub-tab" onclick="switchSubTab(this, 'modal-tab-bass')">Bass</button>
             <button class="sub-tab" onclick="switchSubTab(this, 'modal-tab-perc')">Perc</button>
             <button class="sub-tab" onclick="switchSubTab(this, 'modal-tab-stabs')">Stabs</button>
@@ -1203,9 +1203,9 @@
               <span class="perf-move-desc">Sweeps drums and bass over 4 bars</span>
               <kbd class="kc">B</kbd>
             </button>
-            <button id="btnBreakdown" class="perf-move" title="Mute drums and bass from the next bar, back on the downbeat 4 bars later (N). Press again to drop on the next bar.">
+            <button id="btnBreakdown" class="perf-move" title="Mute kick and bass from the next bar, back on the downbeat 4 bars later (N). Press again to drop on the next bar.">
               <span class="perf-move-name">Breakdown → Drop</span>
-              <span class="perf-move-desc">Drums and bass out for 4 bars</span>
+              <span class="perf-move-desc">Kick and bass out for 4 bars</span>
               <kbd class="kc">N</kbd>
             </button>
             <button id="btnDelayThrow" class="perf-move" title="Open the delay send on stabs, chords and the vox track for one beat (V)">
@@ -1218,7 +1218,7 @@
               <span class="perf-move-desc">Rings out into the next scene over 2 bars</span>
               <kbd class="kc">C</kbd>
             </button>
-            <button id="btnFill" class="perf-move" title="A one-bar snare roll on the drums from the next bar, then the next scene (X)">
+            <button id="btnFill" class="perf-move" title="A one-bar snare roll on the Perc track from the next bar while the kick keeps going, then the next scene (X)">
               <span class="perf-move-name">Fill → Next</span>
               <span class="perf-move-desc">Snare roll for a bar, then the next scene</span>
               <kbd class="kc">X</kbd>
@@ -2536,7 +2536,7 @@
         return rows;
       }
 
-      const ROLE_LABELS = { drums: "Drums", bass: "Bass", perc: "Perc", stabs: "Stabs", fx: "FX", chords: "Chords", pad: "Pad" };
+      const ROLE_LABELS = { drums: "Kick",bass: "Bass", perc: "Perc", stabs: "Stabs", fx: "FX", chords: "Chords", pad: "Pad" };
 
       // One line for the drum-bus processing some styles add after the kit (Drum Buss, or Saturator
       // on editions without it). Nothing is shown when the style has none and there was none to remove.
@@ -3556,7 +3556,9 @@
 
       document.getElementById("stop")?.addEventListener("click", async () => {
         try {
+          // The server also turns the autopilot off and clears every clip, so Live stays stopped.
           await post("/transport/stop", {});
+          _trackAutoPlayStop = null;
           await renderStatus(null);
         } catch (e) {
           log("Stop failed: " + e.message);
@@ -4534,6 +4536,12 @@
         perfFlash(document.getElementById("perfPlay"));
         try {
           await post(playing ? "/transport/stop" : "/transport/play", {});
+          if (playing && perf.auto && perf.auto.running) {
+            _trackAutoPlayStop = null;
+            perf.auto = { running: false, current_step: null, message: "Stopped: autopilot off." };
+            renderPerfAuto();
+            renderPerform();
+          }
         } catch (e) {
           log("Transport failed: " + e.message);
         }
@@ -5001,16 +5009,20 @@
           throw new Error((resp && resp.error) ? resp.error : 'cache_fetch_failed');
         }
         const data = resp.data || {};
+        // Kick and Perc show what each track plays: the kick alone, and snare/clap/hats with the percussion.
+        const tracks = resp.tracks || {};
+        const kick = tracks.kick || null;
+        const perc = tracks.perc || null;
 
-        _setMeta('topDrumsMeta', `Slot ${s} · Drums ${data.drums ? 'cached' : 'empty'}`);
+        _setMeta('topDrumsMeta', `Slot ${s} · Kick ${kick ? 'cached' : 'empty'}`);
         _setMeta('topBassMeta', `Slot ${s} · Bass ${data.bass ? 'cached' : 'empty'}`);
-        _setMeta('topPercMeta', `Slot ${s} · Perc ${data.perc ? 'cached' : 'empty'}`);
+        _setMeta('topPercMeta', `Slot ${s} · Perc ${perc ? 'cached' : 'empty'} (snare, clap, hats and percussion)`);
         _setMeta('topStabsMeta', `Slot ${s} · Stabs ${data.stabs ? 'cached' : 'empty'}`);
         _setMeta('topFxMeta', `Slot ${s} · FX ${data.fx ? 'cached' : 'empty'}`);
 
-        _renderLaneGrid(document.getElementById('topDrumsSeq'), data.drums && data.drums.lanes, data.drums && data.drums.bars);
+        _renderLaneGrid(document.getElementById('topDrumsSeq'), kick && kick.lanes, kick && kick.bars);
         _renderBassGrid(document.getElementById('topBassSeq'), data.bass);
-        _renderLaneGrid(document.getElementById('topPercSeq'), data.perc && data.perc.lanes, data.perc && data.perc.bars);
+        _renderLaneGrid(document.getElementById('topPercSeq'), perc && perc.lanes, perc && perc.bars);
         _renderLaneGrid(document.getElementById('topStabsSeq'), data.stabs && data.stabs.lanes, data.stabs && data.stabs.bars);
         _renderLaneGrid(document.getElementById('topFxSeq'), data.fx && data.fx.lanes, data.fx && data.fx.bars);
 
@@ -6902,7 +6914,7 @@
 
         // Live gives per-track levels, not a spectrum, so tracks are sorted into low / mid / high
         // by name and instrument, and each one becomes a bump in its part of a synthetic 128-bin
-        // spectrum. Instruments count because Pulse names its tracks PS-TRK-01.. regardless of role.
+        // spectrum. Instruments count too, for tracks whose names don't say what they hold.
         const VIZ_LOW = /kick|\bbd\b|bass|\bsub\b|808|\bkit\b|drum/i;
         const VIZ_HIGH = /hat|\bhh\b|cym|ride|crash|shaker|tamb|perc|\btop/i;
         const VIZ_SNARE = /snare|clap|\bsd\b|rim/i;

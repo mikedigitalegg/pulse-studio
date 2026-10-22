@@ -8,6 +8,7 @@ reported by get_capabilities rather than assumed.
 from __future__ import absolute_import, print_function, unicode_literals
 
 import os
+import re
 import sys
 
 try:
@@ -15,7 +16,7 @@ try:
 except ImportError:  # unit tests
     Live = None
 
-BRIDGE_VERSION = "0.2.0"
+BRIDGE_VERSION = "0.3.1"
 PROTOCOL_VERSION = 1
 
 BROWSER_ROOTS = (
@@ -69,6 +70,66 @@ def _float(params, key, default=None):
         return float(v)
     except (TypeError, ValueError):
         raise CommandError("bad_param: %s" % key)
+
+
+def _safe_attr(obj, name, default=None):
+    try:
+        return getattr(obj, name, default)
+    except Exception:
+        return default
+
+
+def _display(p, value):
+    """What Live shows for a parameter at value ("-0.30 dB", "1.20 kHz"), or None."""
+    try:
+        return str(p.str_for_value(value))
+    except Exception:
+        return None
+
+
+_NUMBER_RE = re.compile(r"(-?\d+(?:\.\d+)?)\s*([a-zA-Z%]*)")
+
+
+def _display_number(text):
+    """A display string as a number: kHz -> Hz, s -> ms, -inf dB -> -1000."""
+    if text is None:
+        return None
+    t = text.strip().lower()
+    if "inf" in t:
+        return -1000.0 if t.startswith("-") else 1000000.0
+    m = _NUMBER_RE.search(t)
+    if not m:
+        return None
+    v, unit = float(m.group(1)), m.group(2)
+    if unit.startswith("k"):
+        v *= 1000.0
+    elif unit == "s":
+        v *= 1000.0
+    return v
+
+
+def _value_for_display(p, target):
+    """The internal value whose display is closest to target, by bisection (displays are monotonic)."""
+    lo, hi = float(p.min), float(p.max)
+    d_lo, d_hi = _display_number(_display(p, lo)), _display_number(_display(p, hi))
+    if d_lo is None or d_hi is None:
+        raise CommandError("no_display_scale: %s" % p.name)
+    rising = d_hi >= d_lo
+    if (target <= d_lo) == rising:
+        return lo
+    if (target >= d_hi) == rising:
+        return hi
+    for _ in range(40):
+        mid = (lo + hi) / 2.0
+        d = _display_number(_display(p, mid))
+        if d is None:
+            break
+        if (d < target) == rising:
+            lo = mid
+        else:
+            hi = mid
+    value = (lo + hi) / 2.0
+    return float(round(value)) if p.is_quantized else value
 
 
 class Commands(object):
@@ -135,7 +196,10 @@ class Commands(object):
         return self.host.application().browser
 
     def _track(self, params, key="track_index"):
-        """A regular track, or a return track when params has "return_index" instead."""
+        """A regular track, a return track when params has "return_index" instead, or the master
+        track when params has "master": true (index -1)."""
+        if params.get("master"):
+            return -1, self.song.master_track
         if params.get("return_index") is not None:
             i = _int(params, "return_index")
             tracks = self.song.return_tracks
@@ -372,15 +436,16 @@ class Commands(object):
         return {
             "index": ti,
             "name": t.name,
-            "is_midi": bool(t.has_midi_input),
+            # The master track lacks several of these; Live raises RuntimeError, not AttributeError.
+            "is_midi": bool(_safe_attr(t, "has_midi_input", False)),
             "num_devices": len(t.devices),
             "devices": [self._device_info(i, d) for i, d in enumerate(t.devices)],
             "volume": t.mixer_device.volume.value,
             "panning": t.mixer_device.panning.value,
-            "sends": [p.value for p in getattr(t.mixer_device, "sends", ())],
-            "mute": bool(t.mute),
-            "solo": bool(t.solo),
-            "playing_slot_index": getattr(t, "playing_slot_index", -1),  # return tracks have no slots
+            "sends": [p.value for p in (_safe_attr(t.mixer_device, "sends", ()) or ())],
+            "mute": bool(_safe_attr(t, "mute", False)),
+            "solo": bool(_safe_attr(t, "solo", False)),
+            "playing_slot_index": _safe_attr(t, "playing_slot_index", -1),  # return tracks have no slots
         }
 
     def set_track(self, params):
@@ -576,20 +641,33 @@ class Commands(object):
                     "min": p.min,
                     "max": p.max,
                     "is_quantized": bool(p.is_quantized),
+                    "display": _display(p, p.value),
+                    "items": [str(x) for x in p.value_items] if p.is_quantized else None,
                 }
                 for i, p in enumerate(d.parameters)
             ],
         }
 
     def set_device_param(self, params):
+        """Set by internal "value", by "display_value" (a number in the units Live shows: dB, Hz,
+        ms, %; seconds count as ms) or by "item" (a quantized parameter's option, e.g. "Analog Clip")."""
         d = self._device(params)
         pi = _int(params, "param_index")
         ps = d.parameters
         if pi < 0 or pi >= len(ps):
             raise CommandError("param_index_out_of_range: %d (params: %d)" % (pi, len(ps)))
         p = ps[pi]
-        p.value = _clamp(_float(params, "value"), p.min, p.max)
-        return {"name": p.name, "value": p.value}
+        if params.get("item") is not None:
+            items = [str(x).lower() for x in p.value_items]
+            want = str(params["item"]).lower()
+            if want not in items:
+                raise CommandError("unknown_item: %s (items: %s)" % (params["item"], ", ".join(str(x) for x in p.value_items)))
+            p.value = p.min + items.index(want)
+        elif params.get("display_value") is not None:
+            p.value = _value_for_display(p, _float(params, "display_value"))
+        else:
+            p.value = _clamp(_float(params, "value"), p.min, p.max)
+        return {"name": p.name, "value": p.value, "display": _display(p, p.value)}
 
     def _select_track_and_load(self, track, item):
         self.song.view.selected_track = track

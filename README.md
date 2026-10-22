@@ -111,10 +111,10 @@ The pill under the logo shows the connection: it turns green with your Live vers
 ## First run
 
 1. Open a new, empty Live set and make sure PulseBridge is selected as a Control Surface.
-2. In Pulse Studio, go to **Compose**, pick a **Style** (Techno, House, DnB, …) and generate. Pulse creates its tracks (named `PS-TRK-01`, `PS-TRK-02`, …), loads instruments, writes clips into Session View and can fire them.
+2. In Pulse Studio, go to **Compose**, pick a **Style** (Techno, House, DnB, …) and generate. Pulse creates its tracks (named by role: `Kick`, `Bass`, `Perc`, `Stabs`, `FX`, `Chords`, `Pad`), loads instruments, writes clips into Session View and can fire them.
 3. Press play in Live (or use the Play button in the sidebar).
 
-Leave the `PS-TRK-…` track names as they are: Pulse uses them to recognise tracks it has already set up. Renaming them makes it create a fresh set of tracks on the next generate.
+Leave those track names as they are: Pulse uses them to recognise tracks it has already set up. Renaming them makes it create a fresh set of tracks on the next generate.
 
 ## Using the app
 

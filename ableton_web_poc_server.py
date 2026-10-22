@@ -33,6 +33,8 @@ from dotenv import load_dotenv
 
 try:
     import instrument_palette
+    import sound_analysis
+    import track_fx
     from live_link import LiveLink
     from pulse_bridge_client import BridgeError, PulseBridgeClient
 except ModuleNotFoundError as e:
@@ -89,9 +91,10 @@ _AUTOPLAY_STOP: threading.Event | None = None
 _AUTOPLAY_STATE: dict = {"running": False, "current_step": None, "last_scene_index": None}
 
 PULSE_TRACK_PLAN: list[dict] = [
-    {"name": "Drums", "track_index": 0, "role": "drums", "q": "909 kit"},
+    # The "drums" role plays only the kick; every other drum lane plays on the Perc track (see _split_drum_parts).
+    {"name": "Kick", "track_index": 0, "role": "drums", "q": "909 kit"},
     {"name": "Bass", "track_index": 1, "role": "bass", "q": "bass"},
-    {"name": "Perc", "track_index": PERC_TRACK_INDEX, "role": "perc", "q": "perc"},
+    {"name": "Perc", "track_index": PERC_TRACK_INDEX, "role": "perc", "q": "kit"},
     {"name": "Stabs", "track_index": STABS_TRACK_INDEX, "role": "stabs", "q": "stab"},
     {"name": "FX", "track_index": FX_TRACK_INDEX, "role": "fx", "q": "pad"},
     {"name": "Chords", "track_index": CHORDS_TRACK_INDEX, "role": "chords", "q": "pad"},
@@ -110,6 +113,22 @@ def _pulse_required_track_count() -> int:
         except Exception:
             continue
     return int(mx) + 1
+
+
+def _pulse_track_name(track_index: int) -> str:
+    # Name Pulse gives a track in Live: its role (Drums, Bass…), so the set reads clearly.
+    for item in PULSE_TRACK_PLAN:
+        if int(item["track_index"]) == int(track_index):
+            return str(item["name"])
+    return f"Track {int(track_index) + 1}"
+
+
+# Names Pulse used for a track before, so sets made with them are still recognised.
+_PULSE_LEGACY_TRACK_NAMES = {0: ("Drums",)}
+
+
+def _is_pulse_track_name(track_index: int, name: str) -> bool:
+    return name == _pulse_track_name(track_index) or name in _PULSE_LEGACY_TRACK_NAMES.get(int(track_index), ())
 
 
 def _pulse_default_track_indices() -> list[int]:
@@ -2184,6 +2203,8 @@ LANE_TO_MIDI_NOTE = {
     "fx": 72,
 }
 
+SINGLE_KICK_NOTE = 60
+
 MACRO_TRACK_INDEX = 0
 MACRO_DEVICE_INDEX = 0
 MACRO_PARAM_BY_MACRO = {
@@ -3532,8 +3553,20 @@ def play():
 
 @app.post("/transport/stop")
 def stop():
+    """Stop everything, so nothing starts Live again on its own.
+
+    The autopilot goes first: it fires scenes on a timer, and firing a scene restarts the transport.
+    Clips are stopped after the transport, when Live clears them at once instead of on the next bar,
+    so pressing play in Live afterwards doesn't pick the old clips back up.
+    """
+    autoplay_stop()
     ctrl.stop()
-    return {"ok": True}
+    clips = None
+    try:
+        clips = clips_stop_all()
+    except Exception as e:
+        clips = {"ok": False, "error": str(e)}
+    return {"ok": True, "autoplay_stopped": True, "clips": clips}
 
 
 @app.post("/transport/tempo")
@@ -3621,6 +3654,17 @@ def tracks_plan():
     return {"ok": True, "tracks": [{"track_index": int(p["track_index"]), "role": p["role"], "name": p["name"]} for p in PULSE_TRACK_PLAN]}
 
 
+def _transport_is_playing() -> bool | None:
+    """Whether Live's transport runs; None when Live can't be asked."""
+    clock = _song_clock()
+    if clock is not None:
+        return bool(clock["playing"])
+    res = _query_with_timeout("/live/song/get/is_playing", [], timeout_s=0.8)
+    if isinstance(res, dict) and res.get("ok") and res.get("args"):
+        return bool(res["args"][0])
+    return None
+
+
 def _autoplay_worker(*, steps: list[dict], bpm: float, clip_bars: int, loop: bool, stop_event: threading.Event):
     bpm_f = float(bpm or 140.0)
     if bpm_f <= 1.0:
@@ -3666,9 +3710,16 @@ def _autoplay_worker(*, steps: list[dict], bpm: float, clip_bars: int, loop: boo
                 pass
 
             sleep_s = min(3600.0, scene_dur_s * float(repeats))
-            end_at = time.time() + sleep_s
+            fired_at = time.time()
+            end_at = fired_at + sleep_s
+            next_check = fired_at + 1.5  # give Live a moment to start after the fire
             while (time.time() < end_at) and (not stop_event.is_set()):
                 time.sleep(0.1)
+                if time.time() >= next_check:
+                    next_check = time.time() + 1.0
+                    # Stopped in Live itself: firing the next scene would start it again, so stand down.
+                    if _transport_is_playing() is False:
+                        stop_event.set()
 
         if not bool(loop):
             break
@@ -3828,14 +3879,16 @@ def _ensure_midi_tracks_prefix(count: int, *, prefix: str):
     created = 0
     pref = str(prefix or "").strip()
 
-    # If tracks already appear to be prepared (named with prefix), don't insert more.
+    # If tracks already appear to be prepared (named by role, or with the older prefix), don't insert more.
     try:
         names_res = _query_with_timeout("/live/song/get/track_names", [], timeout_s=0.8)
         if isinstance(names_res, dict) and names_res.get("ok") and isinstance(names_res.get("args"), tuple):
             names = [str(x) for x in names_res.get("args")]
-            if len(names) >= int(count) and pref:
+            if len(names) >= int(count):
                 first = names[: int(count)]
-                if all(str(n).startswith(pref) for n in first):
+                if all(_is_pulse_track_name(i, n) for i, n in enumerate(first)):
+                    return {"ok": True, "created": 0, "requested": int(count), "note": "Tracks already prepared (role names)."}
+                if pref and all(str(n).startswith(pref) for n in first):
                     return {"ok": True, "created": 0, "requested": int(count), "note": "Tracks already prepared (prefixed)."}
     except Exception:
         pass
@@ -4143,7 +4196,7 @@ def _role_tracks(roles: list[str]) -> list[int]:
 
 
 # ---------------------------------------------------------------- Breakdown → Drop
-# Drums and bass drop out on the next bar and come back on the downbeat N bars later. Only parts
+# Kick and bass drop out on the next bar and come back on the downbeat N bars later. Only parts
 # that were playing are muted, and only those are brought back, so mutes set by hand stay put.
 # Pressing again during the breakdown drops on the next bar instead of waiting it out.
 
@@ -4407,9 +4460,12 @@ _FILL_LOCK = threading.Lock()
 _FILL: dict = {"running": False}
 
 
-def _fill_notes(kind: str, bar_beats: float) -> list[dict]:
-    """A roll that doubles in speed through the bar and swells in velocity: 8ths, 16ths, 32nds."""
-    pitch = LANE_TO_MIDI_NOTE["snare" if kind == "snare" else "ch"]
+def _fill_notes(kind: str, bar_beats: float, pads: dict[str, int] | None = None) -> list[dict]:
+    """A roll that doubles in speed through the bar and swells in velocity: 8ths, 16ths, 32nds.
+    No kick: the fill plays on the Perc track while the Kick track keeps going."""
+    pads = pads or {}
+    lane = "snare" if kind == "snare" else "ch"
+    pitch = pads.get(lane, LANE_TO_MIDI_NOTE[lane])
     lo, hi = (70, 127) if kind == "snare" else (60, 120)
     notes = []
     for seg_start, seg_end, step in ((0.0, 0.5, 0.5), (0.5, 0.75, 0.25), (0.75, 1.0, 0.125)):
@@ -4418,9 +4474,8 @@ def _fill_notes(kind: str, bar_beats: float) -> list[dict]:
             notes.append({"pitch": pitch, "start_time": round(t, 4), "duration": step * 0.9,
                           "velocity": round(lo + (hi - lo) * t / bar_beats)})
             t += step
-    notes.append({"pitch": LANE_TO_MIDI_NOTE["kick"], "start_time": 0.0, "duration": 0.25, "velocity": 110})
     if kind == "hats":
-        notes.append({"pitch": LANE_TO_MIDI_NOTE["oh"], "start_time": bar_beats - 0.5, "duration": 0.45, "velocity": 115})
+        notes.append({"pitch": pads.get("oh", LANE_TO_MIDI_NOTE["oh"]), "start_time": bar_beats - 0.5, "duration": 0.45, "velocity": 115})
     return notes
 
 
@@ -4462,13 +4517,14 @@ def move_fill(req: FillRequest):
     clock, err = _grid_or_error()
     if err:
         return err
-    drums = _role_tracks(["drums"])[0]
+    # Snare and hats live on the Perc track, so the fill replaces that clip for a bar.
+    drums = _role_tracks(["perc"])[0]
     bpb = clock["beats_per_bar"]
     try:
         prev_slot = int((BRIDGE.request("get_track", {"track_index": drums}, timeout_s=1.0) or {}).get("playing_slot_index", -1))
         slot = int(BRIDGE.request("find_free_slot", {"track_index": drums}, timeout_s=1.0)["slot"])
         BRIDGE.request("write_clip", {"track_index": drums, "clip_slot_index": slot, "length": bpb,
-                                      "notes": _fill_notes(req.kind, bpb), "name": FILL_CLIP_NAME}, timeout_s=2.0)
+                                      "notes": _fill_notes(req.kind, bpb, _DRUM_MAPS.get(drums)), "name": FILL_CLIP_NAME}, timeout_s=2.0)
     except BridgeError as e:
         return {"ok": False, "error": str(e)}
     clock = _song_clock() or clock  # writing took a moment
@@ -4692,18 +4748,69 @@ def _finalize_pair_parts(parts: dict, style: str, chord_prog: dict | None, rng: 
     return out
 
 
+def _merge_lane_patterns(patterns: list[dict]) -> dict:
+    """One lane pattern from several: lanes they share keep the louder hit per step, the first pattern's
+    chance/spread/swing win."""
+    out = {**patterns[0], "lanes": {}, "chance": {}, "spread": {}}
+    out["bars"] = max(int(p.get("bars", 1) or 1) for p in patterns)
+    for p in patterns:
+        for lane, steps in (p.get("lanes") or {}).items():
+            have = out["lanes"].get(lane)
+            if have is None:
+                out["lanes"][lane] = list(steps)
+            else:
+                n = max(len(have), len(steps))
+                out["lanes"][lane] = [max(have[i] if i < len(have) else 0, steps[i] if i < len(steps) else 0) for i in range(n)]
+        for key in ("chance", "spread"):
+            if isinstance(p.get(key), dict):
+                for lane, v in p[key].items():
+                    out[key].setdefault(lane, v)
+    return out
+
+
+def _split_drum_parts(drums: dict | None, perc: dict | None) -> tuple[dict | None, dict | None]:
+    """(Kick track clip, Perc track clip). The Kick track plays only the kick; the rest of the drum groove
+    (snare, clap, hats, ...) joins the percussion on the Perc track. A clip is returned even when it has no
+    hits, so writing it clears whatever an earlier generate left in that slot."""
+    kick, rest = None, []
+    if isinstance(drums, dict):
+        lanes = drums.get("lanes") or {}
+        kick = {**drums, "lanes": {"kick": list(lanes.get("kick") or [])}}
+        rest.append({**drums, "lanes": {k: v for k, v in lanes.items() if k != "kick"}})
+    if isinstance(perc, dict):
+        rest.append(perc)
+    return kick, (_merge_lane_patterns(rest) if rest else None)
+
+
+def _write_drum_parts(slot_by_track: dict[str, tuple[int, int]], drums: dict | None, perc: dict | None):
+    """Write the drum groove and percussion to the Kick and Perc tracks. slot_by_track: role -> (track, slot).
+
+    Both parts share the Perc track, so a part that isn't being written comes from the cache: regenerating
+    only the percussion keeps that slot's snare and hats, and the other way round."""
+    if drums is None and perc is None:
+        return
+    kick_part, _ = _split_drum_parts(drums, None)
+    if kick_part is not None:
+        _write_pattern_to_ableton(*slot_by_track["drums"], kick_part)
+    _, perc_part = _split_drum_parts(drums if drums is not None else GEN_CACHE.get_drums(*slot_by_track["drums"]),
+                                     perc if perc is not None else GEN_CACHE.get_perc(*slot_by_track["perc"]))
+    if perc_part is not None:
+        _write_pattern_to_ableton(*slot_by_track["perc"], perc_part)
+
+
 def _write_pair_parts(req: "GenerateAIPairRequest", parts: dict):
-    if bool(req.include_drums) and isinstance(parts.get("drums"), dict):
-        _write_pattern_to_ableton(int(req.drum_track_index), int(req.drum_clip_slot_index), parts["drums"])
-        GEN_CACHE.set_drums(int(req.drum_track_index), int(req.drum_clip_slot_index), parts["drums"])
+    drums = parts["drums"] if bool(req.include_drums) and isinstance(parts.get("drums"), dict) else None
+    perc = parts["perc"] if bool(req.include_perc) and isinstance(parts.get("perc"), dict) else None
+    _write_drum_parts({"drums": (int(req.drum_track_index), int(req.drum_clip_slot_index)),
+                       "perc": (int(req.perc_track_index), int(req.perc_clip_slot_index))}, drums, perc)
+    if drums is not None:
+        GEN_CACHE.set_drums(int(req.drum_track_index), int(req.drum_clip_slot_index), drums)
+    if perc is not None:
+        GEN_CACHE.set_perc(int(req.perc_track_index), int(req.perc_clip_slot_index), perc)
 
     if bool(req.include_bass) and isinstance(parts.get("bass"), dict):
         _write_bassline_to_ableton(int(req.bass_track_index), int(req.bass_clip_slot_index), parts["bass"])
         GEN_CACHE.set_bass(int(req.bass_track_index), int(req.bass_clip_slot_index), parts["bass"])
-
-    if bool(req.include_perc) and isinstance(parts.get("perc"), dict):
-        _write_pattern_to_ableton(int(req.perc_track_index), int(req.perc_clip_slot_index), parts["perc"])
-        GEN_CACHE.set_perc(int(req.perc_track_index), int(req.perc_clip_slot_index), parts["perc"])
 
     if bool(req.include_stabs) and isinstance(parts.get("stabs"), dict):
         _write_pattern_to_ableton(int(req.stabs_track_index), int(req.stabs_clip_slot_index), parts["stabs"])
@@ -5067,10 +5174,10 @@ async def generate_full_track(req: GenerateFullTrackRequest):
         needed_tracks = _pulse_required_track_count()
         # Ensure tracks 0..needed_tracks-1 are MIDI (fresh Live sets often start with audio tracks).
         ensure_tracks_res = _ensure_midi_tracks_prefix(int(needed_tracks), prefix="PS-TRK")
-        # Auto-label first tracks so /tracks/ensure becomes idempotent (prefix check).
+        # Name tracks by role so /tracks/ensure recognises them next time (and older PS-TRK sets get renamed).
         for i in range(0, int(needed_tracks)):
             try:
-                ctrl.send("/live/track/set/name", [int(i), f"PS-TRK-{(i + 1):02d}"])
+                ctrl.send("/live/track/set/name", [int(i), _pulse_track_name(i)])
                 time.sleep(0.01)
             except Exception:
                 pass
@@ -5405,12 +5512,20 @@ def apply_full_track_export(req: ApplyFullTrackExportRequest):
         inc = sc.get("include") or {}
         data = sc.get("data") or {}
 
+        drums_valid = perc_valid = None
         if bool(inc.get("drums")) and isinstance(data.get("drums"), dict):
             drums_valid, dmeta = _validate_pattern(data["drums"], int(data["drums"].get("bars", 1) or 1))
             if not dmeta.get("ok"):
                 return {"ok": False, "error": "invalid_drums", "scene_slot": slot, "detail": dmeta}
-            _write_pattern_to_ableton(0, slot, drums_valid)
+        if bool(inc.get("perc")) and isinstance(data.get("perc"), dict):
+            perc_valid, pmeta = _validate_pattern(data["perc"], int(data["perc"].get("bars", 1) or 1))
+            if not pmeta.get("ok"):
+                return {"ok": False, "error": "invalid_perc", "scene_slot": slot, "detail": pmeta}
+        _write_drum_parts({"drums": (0, slot), "perc": (2, slot)}, drums_valid, perc_valid)
+        if drums_valid is not None:
             GEN_CACHE.set_drums(0, slot, drums_valid)
+        if perc_valid is not None:
+            GEN_CACHE.set_perc(2, slot, perc_valid)
 
         if bool(inc.get("bass")) and isinstance(data.get("bass"), dict):
             bass_valid, bmeta = _validate_bassline(data["bass"], int(data["bass"].get("bars", 1) or 1))
@@ -5418,13 +5533,6 @@ def apply_full_track_export(req: ApplyFullTrackExportRequest):
                 return {"ok": False, "error": "invalid_bass", "scene_slot": slot, "detail": bmeta}
             _write_bassline_to_ableton(1, slot, bass_valid)
             GEN_CACHE.set_bass(1, slot, bass_valid)
-
-        if bool(inc.get("perc")) and isinstance(data.get("perc"), dict):
-            perc_valid, pmeta = _validate_pattern(data["perc"], int(data["perc"].get("bars", 1) or 1))
-            if not pmeta.get("ok"):
-                return {"ok": False, "error": "invalid_perc", "scene_slot": slot, "detail": pmeta}
-            _write_pattern_to_ableton(2, slot, perc_valid)
-            GEN_CACHE.set_perc(2, slot, perc_valid)
 
         if bool(inc.get("stabs")) and isinstance(data.get("stabs"), dict):
             stabs_valid, smeta = _validate_pattern(data["stabs"], int(data["stabs"].get("bars", 1) or 1))
@@ -5450,16 +5558,20 @@ def get_cached_scene(slot: int = 0):
     s = int(slot)
     if s < 0:
         return {"ok": False, "error": "bad_slot"}
+    drums, perc = GEN_CACHE.get_drums(0, s), GEN_CACHE.get_perc(2, s)
+    kick_track, perc_track = _split_drum_parts(drums, perc)
     return {
         "ok": True,
         "slot": s,
         "data": {
-            "drums": GEN_CACHE.get_drums(0, s),
+            "drums": drums,
             "bass": GEN_CACHE.get_bass(1, s),
-            "perc": GEN_CACHE.get_perc(2, s),
+            "perc": perc,
             "stabs": GEN_CACHE.get_stabs(3, s),
             "fx": GEN_CACHE.get_fx(4, s),
         },
+        # What the Kick and Perc tracks actually play: the kick alone, and the rest of the drums with the perc.
+        "tracks": {"kick": kick_track, "perc": perc_track},
     }
 
 
@@ -5544,6 +5656,44 @@ def _load_browser_index_from_disk() -> dict | None:
 _disk_index = _load_browser_index_from_disk()
 if isinstance(_disk_index, dict):
     BROWSER_INDEX.set(_disk_index)
+
+
+SOUND_FEATURES_FILE = os.path.join(APP_DIR, "knowledge", "sound_features.json")
+SOUND_ANALYSIS: dict = {"status": "idle"}
+
+
+def _analyse_library_sounds() -> None:
+    """Analyse the library's kicks and drum kits (about a minute) and hand the result to the palette picker."""
+    SOUND_ANALYSIS.update(status="running", started_at=int(time.time()), error=None)
+    try:
+        doc = sound_analysis.build_features(log=lambda m: print(m, flush=True))
+        sound_analysis.save_cache(SOUND_FEATURES_FILE, doc)
+        instrument_palette.set_sound_features(doc["features"])
+        SOUND_ANALYSIS.update(status="done", sounds=len(doc["features"]), roots=doc["roots"])
+    except Exception as e:
+        SOUND_ANALYSIS.update(status="failed", error=str(e))
+
+
+instrument_palette.set_sound_features(sound_analysis.load_cache(SOUND_FEATURES_FILE))
+if instrument_palette.SOUND_FEATURES:
+    SOUND_ANALYSIS.update(status="done", sounds=len(instrument_palette.SOUND_FEATURES))
+else:
+    threading.Thread(target=_analyse_library_sounds, daemon=True).start()
+
+
+@app.get("/instruments/analysis")
+def instruments_analysis():
+    """State of the kick/kit audio analysis that ranks drum sounds by how they sound."""
+    return {"ok": True, **SOUND_ANALYSIS}
+
+
+@app.post("/instruments/analysis")
+def instruments_analysis_rebuild():
+    """Re-analyse the library's kicks and kits, e.g. after installing Packs."""
+    if SOUND_ANALYSIS.get("status") == "running":
+        return {"ok": True, **SOUND_ANALYSIS}
+    threading.Thread(target=_analyse_library_sounds, daemon=True).start()
+    return {"ok": True, "status": "running"}
 
 
 @app.get("/mcp/session")
@@ -5980,6 +6130,13 @@ def _loaded_for_other_style(state: dict, track_index: int, playable: list[dict],
     return other if other and other != style else None
 
 
+def _pulse_loaded_kit(state: dict, track_index: int, playable: list[dict]) -> bool:
+    """True when the track's instrument is a Drum Rack that Pulse itself loaded."""
+    rec = state.get(str(int(track_index)))
+    return (isinstance(rec, dict) and bool(playable) and bool(playable[0].get("is_drum_rack"))
+            and str(playable[0].get("name") or "") == str(rec.get("device") or ""))
+
+
 async def _load_and_verify(track_index: int, item: dict) -> tuple[bool, str | None]:
     """(True, loaded device name) or (False, error)."""
     try:
@@ -6027,13 +6184,15 @@ async def _apply_instrument_palette(
         other_style = _loaded_for_other_style(state, ti, playable, style)
         if other_style:
             restyled[role] = other_style
-        if playable and not replace and not other_style:
+        # The Kick track used to get a whole kit; swap a kit Pulse loaded there for a single kick.
+        old_kit = role == "drums" and _pulse_loaded_kit(state, ti, playable)
+        if playable and not replace and not other_style and not old_kit:
             kept = {"track_index": ti, "role": role, "action": "kept", "name": playable[0]["name"]}
-            if role in ("drums", "perc") and not any(d.get("is_drum_rack") for d in playable):
+            if role == "perc" and not any(d.get("is_drum_rack") for d in playable):
                 kept["warning"] = "Not a drum kit: drum patterns will play as pitched notes. Use Re-pick to swap in a kit."
             results.append(kept)
             continue
-        need[role] = (ti, empty + (playable if (replace or other_style) else []))
+        need[role] = (ti, empty + (playable if (replace or other_style or old_kit) else []))
 
     items = _browser_index_items()
     pools = {r: instrument_palette.role_pool(items, r) for r in need}
@@ -6050,6 +6209,7 @@ async def _apply_instrument_palette(
         picks.setdefault(role, pick)
 
     defaults = (BRIDGE.capabilities or {}).get("defaults") or {}
+    loaded_items: dict[str, dict] = {}
     for role, (ti, remove) in need.items():
         for d in sorted(remove, key=lambda d: d["index"], reverse=True):
             try:
@@ -6072,6 +6232,7 @@ async def _apply_instrument_palette(
         for item in order:
             ok, detail = await _load_and_verify(ti, item)
             if ok:
+                loaded_items[role] = item
                 _record_palette_load(ti, style, detail)
                 first = item is (pick or {}).get("item")
                 entry.update({
@@ -6110,6 +6271,15 @@ async def _apply_instrument_palette(
         except BridgeError as e:
             drum_bus = {"track_index": int(drums_plan["track_index"]), "role": "drum_bus", "action": "failed", "error": str(e)}
 
+    # After the drum bus, so the kick's EQ and drive sit behind it.
+    track_fx_results = []
+    for p in plan:
+        ti, role = int(p["track_index"]), p["role"]
+        try:
+            track_fx_results.append(await _apply_track_fx(style, role, ti, loaded_items.get(role)))
+        except BridgeError as e:
+            track_fx_results.append({"track_index": ti, "role": role, "action": "failed", "error": str(e)})
+
     # Reverb/delay returns belong to the whole set, so a re-pick of a few roles leaves them alone.
     returns = None
     if roles is None:
@@ -6117,12 +6287,18 @@ async def _apply_instrument_palette(
             returns = await _apply_returns(style)
         except BridgeError as e:
             returns = {"action": "failed", "error": str(e)}
+    try:
+        master = await _apply_master_fx(style)
+    except BridgeError as e:
+        master = {"action": "failed", "error": str(e)}
 
     return {
         "ok": all(r.get("action") != "failed" for r in results),
         "style": style,
         "results": results,
         "drum_bus": drum_bus,
+        "track_fx": track_fx_results,
+        "master": master,
         "returns": returns,
         "ai": ai_meta,
         "index_items": len(items),
@@ -6202,25 +6378,164 @@ async def _apply_drum_bus(style: str, track_index: int) -> dict:
     else:
         out["action"] = "updated"
 
-    params = (await _bridge_call("get_device_params", {"track_index": track_index, "device_index": idx}) or {}).get("parameters") or []
-    set_params, missing = {}, []
-    for key, norm in (choice.get("params") or {}).items():
-        p = _match_param(params, key)
-        if p is None:
-            missing.append(key)
-            continue
-        lo, hi = float(p.get("min", 0.0)), float(p.get("max", 1.0))
-        value = lo + max(0.0, min(1.0, float(norm))) * (hi - lo)
-        if p.get("is_quantized"):
-            value = float(round(value))
-        await _bridge_call("set_device_param", {"track_index": track_index, "device_index": idx, "param_index": p["index"], "value": value})
-        set_params[p["name"]] = round(value, 3)
-
+    set_params, missing = await _set_device_params({"track_index": track_index}, idx, choice.get("params") or {})
     _record_palette_load(track_index, style, name, slot="bus")
     out.update({"device": name, "params": set_params})
     if missing:
         out["unmatched_params"] = missing
     return out
+
+
+def _bridge_at_least(version: str) -> bool:
+    have = str((BRIDGE.capabilities or {}).get("bridge_version") or "0")
+    as_tuple = lambda v: tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+    return as_tuple(have) >= as_tuple(version)
+
+
+async def _set_device_params(target: dict, device_index: int, spec: dict) -> tuple[dict, list[str]]:
+    """Apply a track_fx param spec to one device. target names the track ({"track_index": n},
+    {"return_index": n} or {"master": True}). Returns ({param: shown value}, unmatched keys)."""
+    if not spec:
+        return {}, []
+    params = (await _bridge_call("get_device_params", {**target, "device_index": device_index}) or {}).get("parameters") or []
+    by_units = _bridge_at_least("0.3.0")
+    done, missing = {}, []
+    for key, setting in spec.items():
+        p = _match_param(params, key)
+        if p is None:
+            missing.append(key)
+            continue
+        call = {**target, "device_index": device_index, "param_index": p["index"]}
+        if isinstance(setting, dict) and ("display" in setting or "item" in setting):
+            if not by_units:
+                missing.append(f"{key} (needs PulseBridge 0.3)")
+                continue
+            call.update({"display_value": float(setting["display"])} if "display" in setting else {"item": str(setting["item"])})
+        elif isinstance(setting, dict):
+            call["value"] = float(setting.get("value", 0.0))
+        else:
+            lo, hi = float(p.get("min", 0.0)), float(p.get("max", 1.0))
+            value = lo + max(0.0, min(1.0, float(setting))) * (hi - lo)
+            call["value"] = float(round(value)) if p.get("is_quantized") else value
+        try:
+            res = await _bridge_call("set_device_param", call) or {}
+        except BridgeError as e:
+            missing.append(f"{key} ({e})")
+            continue
+        done[p["name"]] = res.get("display") or round(float(res.get("value", call.get("value", 0.0))), 3)
+    return done, missing
+
+
+async def _load_chain(target: dict, chain: list[dict]) -> tuple[list[dict], list[str]]:
+    """Append each device of a chain to a track and set its params: ([{device, params}], loaded names)."""
+    available = set(((BRIDGE.capabilities or {}).get("devices") or {}).get("audio_effects") or [])
+    rows, names = [], []
+    for spec in chain:
+        name = spec["device"]
+        if available and name not in available:
+            rows.append({"device": name, "action": "skipped", "reason": "not in this Live edition"})
+            continue
+        await _bridge_call("load_device", {**target, "device_name": name}, timeout_s=10.0)
+        devices = (await _bridge_call("get_track", target) or {}).get("devices") or []
+        di = next((d["index"] for d in reversed(devices) if d.get("name") == name), None)
+        if di is None:
+            rows.append({"device": name, "action": "failed", "error": "didn't appear on the track"})
+            continue
+        names.append(name)
+        set_params, missing = await _set_device_params(target, di, spec.get("params") or {})
+        row = {"device": name, "action": "loaded", "params": set_params}
+        if missing:
+            row["unmatched_params"] = missing
+        rows.append(row)
+    return rows, names
+
+
+async def _remove_pulse_fx(target: dict, names: list[str]) -> None:
+    """Delete the effects Pulse added last time (matched by name from the end of the chain)."""
+    devices = (await _bridge_call("get_track", target) or {}).get("devices") or []
+    left = list(names)
+    for d in reversed(devices):
+        if d.get("type") != "instrument" and d.get("name") in left:
+            left.remove(d["name"])
+            await _bridge_call("delete_device", {**target, "device_index": d["index"]})
+
+
+async def _apply_track_fx(style: str, role: str, track_index: int, item: dict | None = None) -> dict:
+    """Tune the track's instrument from the audio analysis and rebuild the effect chain Pulse owns.
+
+    Effects Pulse added for an earlier pick are replaced; anything the producer added stays.
+    item is the browser item just loaded, for its analysis; otherwise the device name is looked up.
+    """
+    ti = int(track_index)
+    target = {"track_index": ti}
+    state = _read_palette_state()
+    key = f"{ti}:fx"
+    prior = state.get(key) if isinstance(state.get(key), dict) else {}
+    await _remove_pulse_fx(target, list(prior.get("devices") or []))
+
+    info = await _bridge_call("get_track", target)
+    playable, _ = _track_sound_state(info)
+    inst = playable[0] if playable else None
+    feat = None
+    if item is not None:
+        feat = instrument_palette.sound_features(item)
+    elif inst is not None:
+        feat = instrument_palette.features_for_device(str(inst.get("name") or ""))
+    targets = instrument_palette.style_profile(style).get("sound") or {}
+    out: dict = {"track_index": ti, "role": role}
+
+    # Only instruments Pulse loaded get retuned; one the producer put there is theirs.
+    rec = state.get(str(ti)) if isinstance(state.get(str(ti)), dict) else {}
+    pulse_owned = item is not None or (inst is not None and rec.get("device") == inst.get("name"))
+    if inst is not None and pulse_owned:
+        root = None
+        try:
+            root = (await _bridge_call("get_song") or {}).get("root_note")
+        except BridgeError:
+            pass
+        settings, note = track_fx.instrument_settings(
+            role, str(inst.get("name") or ""), str(inst.get("class_name") or ""), feat, targets, root)
+        if settings:
+            done, missing = await _set_device_params(target, int(inst["index"]), settings)
+            out["instrument"] = {"device": inst.get("name"), "params": done, "note": note}
+            if missing:
+                out["instrument"]["unmatched_params"] = missing
+
+    cfg = STYLE_CONFIG.get(style) if isinstance(STYLE_CONFIG, dict) else None
+    override = cfg.get("track_fx") if isinstance(cfg, dict) else None
+    chain = track_fx.build_chain(track_fx.analysis_fx(role, feat, targets, str((inst or {}).get("name") or "")),
+                                 track_fx.role_chain(style, role, override))
+    rows, names = await _load_chain(target, chain)
+    state = _read_palette_state()
+    state[key] = {"style": style, "devices": names}
+    _write_palette_state(state)
+    out.update({"action": "applied" if names else "none", "chain": rows})
+    return out
+
+
+async def _apply_master_fx(style: str) -> dict:
+    """Put a limiter last on the master so the mix can't clip. A limiter the producer added is kept."""
+    target = {"master": True}
+    try:
+        devices = (await _bridge_call("get_track", target) or {}).get("devices") or []
+    except BridgeError as e:
+        if "missing_param" in str(e) or "track_index" in str(e) or "Main track" in str(e):
+            return {"action": "skipped", "reason": "PulseBridge needs updating for the master track: run "
+                    "python pulse_bridge/install.py, then reselect PulseBridge in Live's Control Surface settings."}
+        raise
+    state = _read_palette_state()
+    prior = state.get("master:fx") if isinstance(state.get("master:fx"), dict) else {}
+    ours = list(prior.get("devices") or [])
+    wanted = {c["device"] for c in track_fx.MASTER_CHAIN}
+    theirs = [d["name"] for d in devices if d.get("name") in wanted and d.get("name") not in ours]
+    if theirs:
+        return {"action": "kept", "devices": theirs, "reason": "the master already has your own limiter"}
+    await _remove_pulse_fx(target, ours)
+    rows, names = await _load_chain(target, track_fx.MASTER_CHAIN)
+    state = _read_palette_state()
+    state["master:fx"] = {"style": style, "devices": names}
+    _write_palette_state(state)
+    return {"action": "applied" if names else "failed", "chain": rows}
 
 
 # Return tracks Pulse sets up for space. The first device in each chain that this Live edition has
@@ -6233,8 +6548,9 @@ PULSE_RETURNS = [
 # Send levels per role (Live's send range, 1.0 = 0 dB). Kick and bass stay dry to keep the low end
 # tight. A style can override any of these in styles.json: "sends": {"reverb": {"pad": 0.7}}.
 DEFAULT_SENDS = {
-    "reverb": {"drums": 0.0, "bass": 0.0, "perc": 0.35, "stabs": 0.45, "fx": 0.6, "chords": 0.45, "pad": 0.6},
-    "delay": {"drums": 0.0, "bass": 0.0, "perc": 0.25, "stabs": 0.45, "fx": 0.45, "chords": 0.2, "pad": 0.15},
+    # Perc carries snare and hats too, so it gets less space than a percussion-only track would.
+    "reverb": {"drums": 0.0, "bass": 0.0, "perc": 0.2, "stabs": 0.45, "fx": 0.6, "chords": 0.45, "pad": 0.6},
+    "delay": {"drums": 0.0, "bass": 0.0, "perc": 0.1, "stabs": 0.45, "fx": 0.45, "chords": 0.2, "pad": 0.15},
 }
 _BRIDGE_UPDATE_HINT = (
     "PulseBridge needs updating for return tracks: run python pulse_bridge/install.py, "
@@ -6369,6 +6685,36 @@ async def instruments_palette(req: PaletteRequest):
     return await _apply_instrument_palette(style, prompt=req.prompt, replace=bool(req.replace), roles=roles)
 
 
+class ProcessingRequest(BaseModel):
+    style: str
+    roles: list[str] | None = None
+
+
+@app.post("/instruments/processing")
+async def instruments_processing(req: ProcessingRequest):
+    """Re-apply the style's processing without changing instruments: tune Pulse-loaded kicks from
+    their analysis, rebuild each track's Pulse effect chain, and make sure the master has a limiter."""
+    if not BRIDGE.connected:
+        return {"ok": False, "error": "bridge_not_connected", "bridge": BRIDGE.status()}
+    style = (req.style or "").strip().lower()
+    if not style:
+        return {"ok": False, "error": "missing_style"}
+    rows = []
+    for p in PULSE_TRACK_PLAN:
+        if req.roles and p["role"] not in req.roles:
+            continue
+        try:
+            rows.append(await _apply_track_fx(style, p["role"], int(p["track_index"])))
+        except BridgeError as e:
+            rows.append({"track_index": int(p["track_index"]), "role": p["role"], "action": "failed", "error": str(e)})
+    try:
+        master = await _apply_master_fx(style)
+    except BridgeError as e:
+        master = {"action": "failed", "error": str(e)}
+    return {"ok": all(r.get("action") != "failed" for r in rows) and master.get("action") != "failed",
+            "style": style, "track_fx": rows, "master": master}
+
+
 def _plan_for_role(role: str) -> dict | None:
     return next((p for p in PULSE_TRACK_PLAN if p["role"] == role), None)
 
@@ -6427,7 +6773,7 @@ async def instruments_current():
         rec = state.get(str(ti))
         picked_for = rec.get("style") if isinstance(rec, dict) and name and rec.get("device") == name else None
         row.update({"name": name, "track_name": info.get("name"), "picked_for": picked_for})
-        if role in ("drums", "perc") and playable and not any(d.get("is_drum_rack") for d in playable):
+        if role == "perc" and playable and not any(d.get("is_drum_rack") for d in playable):
             row["warning"] = "Not a drum kit: drum patterns will play as pitched notes."
         results.append(row)
     return {"ok": True, "results": results}
@@ -6506,7 +6852,11 @@ async def instruments_swap(req: InstrumentSwapRequest):
             drum_bus = await _apply_drum_bus(style, ti)
         except BridgeError as e:
             drum_bus = {"track_index": ti, "role": "drum_bus", "action": "failed", "error": str(e)}
-    return {"ok": True, "result": result, "previous": previous, "drum_bus": drum_bus}
+    try:
+        fx = await _apply_track_fx(style, role, ti, item)
+    except BridgeError as e:
+        fx = {"track_index": ti, "role": role, "action": "failed", "error": str(e)}
+    return {"ok": True, "result": result, "previous": previous, "drum_bus": drum_bus, "track_fx": fx}
 
 
 class _DrumMapCache:
@@ -6537,7 +6887,11 @@ class _DrumMapCache:
             return {}
         try:
             res = BRIDGE.request("get_drum_pads", {"track_index": int(track_index)}, timeout_s=2.0)
-            mapping = instrument_palette.map_drum_pads(res.get("pads") or [])
+            if res.get("rack") is None:
+                # A single instrument (DS Kick, a synth kick, a sample in Simpler) sounds at its root, C3.
+                mapping = {"kick": SINGLE_KICK_NOTE}
+            else:
+                mapping = instrument_palette.map_drum_pads(res.get("pads") or [])
         except BridgeError:
             return {}
         with self.lock:
