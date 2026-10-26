@@ -1,0 +1,21 @@
+Pulse Studio - quick start for Windows
+======================================
+
+You need:
+  - Ableton Live 11 or 12 (any edition)
+  - Python 3.10 or newer: https://www.python.org/downloads/
+    In the installer, tick "Add python.exe to PATH".
+  - For the AI generators: an OpenAI or Anthropic API key, or a local model (Ollama / LM Studio).
+
+1. Unzip this folder somewhere permanent, e.g. Documents\pulse-studio.
+2. Double-click Setup.bat. It installs everything and adds the PulseBridge
+   Remote Script to Ableton Live.
+3. Open (or restart) Ableton Live. Go to Settings > Link, Tempo & MIDI and pick
+   PulseBridge in an empty Control Surface slot (leave Input/Output as None).
+4. Double-click Start.bat. Your browser opens Pulse Studio at http://127.0.0.1:8005/
+   Keep the black window open while you use it.
+5. In the app, go to System > AI Provider, pick a provider, paste your key and press Test.
+   Then go to Styles and press "Rebuild browser index" so Pulse knows your Live library.
+
+If Windows SmartScreen warns about the .bat files, click "More info" > "Run anyway".
+Full instructions and troubleshooting are in README.md.

@@ -7,7 +7,9 @@ browser index, as a set that fits together:
 1. Each role draws from the matching browser category (real kits for drums, Sounds/Bass
    for bass, ...), not a keyword search over the whole library.
 2. Candidates are ranked with a per-style timbre profile, with a little jitter so
-   re-picks vary, and the top few per role go to the AI in a single request.
+   re-picks vary, and the top few per role go to the AI in a single request. Kicks and
+   perc kits are also ranked by how they actually sound (SOUND_TARGETS vs. the audio
+   analysis in sound_analysis.py), since their names rarely say.
 3. Without an API key (or if the AI fails) the top-ranked candidate per role is used.
 
 Also maps a Drum Rack's pad names to Pulse drum lanes, so patterns hit the right pads.
@@ -22,8 +24,10 @@ from typing import Awaitable, Callable
 
 # role -> browser folders it draws from (index "path" values, lowercase prefix match).
 ROLE_POOLS: dict[str, dict] = {
-    "drums": {"paths": ["drums"], "exact": True, "ext": (".adg",), "label": "main drum kit"},
-    "perc": {"paths": ["drums"], "exact": True, "ext": (".adg",), "label": "percussion kit (complements the main kit)"},
+    # One kick sound, not a kit: DS Kick, a synth kick preset or a kick one-shot (loads into Simpler).
+    "drums": {"paths": ["instruments", "sounds/percussive", "drums/drum hits/kick"], "exact": True, "name_re": r"kick",
+              "label": "kick: one kick instrument or sample"},
+    "perc": {"paths": ["drums"], "exact": True, "ext": (".adg",), "label": "drum kit for everything but the kick: snare, clap, hats and percussion"},
     "bass": {"paths": ["sounds/bass"], "label": "bass"},
     "stabs": {"paths": ["sounds/synth rhythmic", "sounds/synth keys", "sounds/piano & keys"], "label": "stabs / rhythmic chords"},
     "fx": {"paths": ["sounds/effects", "sounds/ambient & evolving"], "label": "FX, risers and textures"},
@@ -33,8 +37,9 @@ ROLE_POOLS: dict[str, dict] = {
 
 # Words that suit (+) or clash with (-) a role regardless of style.
 ROLE_WORDS: dict[str, tuple[list[str], list[str]]] = {
-    "drums": (["core kit", "kit"], ["percussion", "perc kit", "hand", "ethnic", "orchestral"]),
-    "perc": (["perc", "percussion", "conga", "bongo", "hand", "latin", "afro", "tribal", "shaker", "tabla", "world"], []),
+    "drums": (["kick"], ["tom", "reverse", "layer", "loop", "bpm"]),
+    # Perc plays snare, clap and hats too, so full kits win; styles can still ask for hand percussion.
+    "perc": (["core kit", "kit"], ["orchestral"]),
     "bass": (["sub", "bass", "mono"], ["upright", "acoustic", "fretless", "slap", "picked", "fingered", "guitar"]),
     "stabs": (["stab", "chord", "rhythm", "organ", "pluck", "keys"], ["lead", "arp", "solo"]),
     "fx": (["riser", "sweep", "noise", "impact", "swell", "whoosh", "texture", "atmos", "fx"], ["piano", "guitar"]),
@@ -146,25 +151,166 @@ STYLE_PROFILES: dict[str, dict] = {
     },
 }
 
+# How each style's kick and perc kit should *sound*, matched against audio analysis of the
+# library (sound_analysis.py), like XO's sample space: a kick named "Kick Amber" can still be
+# the right techno kick. Ranges are (lo, hi); a sound inside every range fits perfectly.
+#   kick: pitch_hz body note, decay_ms length, click_hz attack brightness, dirt 0 clean .. 1 distorted
+#   kit:  snare_decay_ms / hat_decay_ms (snare+clap, hats), snare_dirt, hand = hand drums wanted
+SOUND_TARGETS: dict[str, dict] = {
+    "techno": {"kick": {"pitch_hz": (42, 60), "decay_ms": (250, 500), "click_hz": (180, 600), "dirt": (0, 0.6)},
+               "kit": {"snare_decay_ms": (120, 400), "hat_decay_ms": (30, 220), "snare_dirt": (0, 0.7)}},
+    "acid_techno": {"kick": {"pitch_hz": (45, 62), "decay_ms": (220, 450), "click_hz": (200, 650), "dirt": (0, 0.5)},
+                    "kit": {"snare_decay_ms": (100, 350), "hat_decay_ms": (30, 200)}},
+    "house": {"kick": {"pitch_hz": (45, 65), "decay_ms": (200, 420), "click_hz": (180, 550), "dirt": (0, 0.3)},
+              "kit": {"snare_decay_ms": (150, 450), "hat_decay_ms": (40, 260), "snare_dirt": (0, 0.4), "clap": True}},
+    "happy_house": {"kick": {"pitch_hz": (48, 66), "decay_ms": (180, 360), "click_hz": (250, 750), "dirt": (0, 0.25)},
+                    "kit": {"snare_decay_ms": (150, 400), "hat_decay_ms": (40, 220), "snare_dirt": (0, 0.3), "clap": True}},
+    "detroit_house": {"kick": {"pitch_hz": (45, 62), "decay_ms": (220, 450), "click_hz": (150, 450), "dirt": (0, 0.3)},
+                      "kit": {"snare_decay_ms": (150, 450), "hat_decay_ms": (40, 260), "snare_dirt": (0, 0.4), "clap": True}},
+    "dnb": {"kick": {"pitch_hz": (45, 75), "decay_ms": (100, 250), "click_hz": (300, 1100), "dirt": (0, 0.4)},
+            "kit": {"snare_decay_ms": (120, 320), "hat_decay_ms": (25, 160), "snare": True}},
+    "breakbeat": {"kick": {"pitch_hz": (45, 80), "decay_ms": (120, 300), "click_hz": (250, 900), "dirt": (0, 0.5)},
+                  "kit": {"snare_decay_ms": (120, 350), "hat_decay_ms": (30, 200), "snare": True}},
+    "garage": {"kick": {"pitch_hz": (45, 70), "decay_ms": (120, 280), "click_hz": (250, 800), "dirt": (0, 0.3)},
+               "kit": {"snare_decay_ms": (100, 300), "hat_decay_ms": (25, 150), "snare_dirt": (0, 0.3)}},
+    "tribal": {"kick": {"pitch_hz": (42, 60), "decay_ms": (250, 500), "click_hz": (150, 450), "dirt": (0, 0.4)},
+               "kit": {"hat_decay_ms": (30, 220), "hand": 2}},
+    "psytrance": {"kick": {"pitch_hz": (40, 56), "decay_ms": (120, 230), "click_hz": (300, 900), "dirt": (0, 0.3)},
+                  "kit": {"snare_decay_ms": (80, 250), "hat_decay_ms": (20, 120)}},
+    "tekno": {"kick": {"pitch_hz": (40, 62), "decay_ms": (350, 900), "click_hz": (250, 900), "dirt": (0.4, 1)},
+              "kit": {"snare_decay_ms": (100, 350), "hat_decay_ms": (20, 160), "snare_dirt": (0.3, 1)}},
+    "hard_techno": {"kick": {"pitch_hz": (40, 62), "decay_ms": (300, 750), "click_hz": (250, 900), "dirt": (0.4, 1)},
+                    "kit": {"snare_decay_ms": (100, 350), "hat_decay_ms": (20, 160), "snare_dirt": (0.3, 1)}},
+    # The gabber kick is a tonal, distorted note, so its body sits higher than a sub kick.
+    "gabber": {"kick": {"pitch_hz": (50, 95), "decay_ms": (350, 1000), "click_hz": (300, 1400), "dirt": (0.6, 1)},
+               "kit": {"snare_decay_ms": (80, 300), "hat_decay_ms": (20, 140), "snare_dirt": (0.4, 1)}},
+    "techno_balkan": {"kick": {"pitch_hz": (42, 60), "decay_ms": (250, 500), "click_hz": (180, 600), "dirt": (0, 0.6)},
+                      "kit": {"snare_decay_ms": (120, 400), "hat_decay_ms": (30, 220), "hand": 1}},
+    "techno_balkan_2": {"kick": {"pitch_hz": (42, 60), "decay_ms": (250, 500), "click_hz": (150, 500), "dirt": (0, 0.4)},
+                        "kit": {"hat_decay_ms": (30, 220), "hand": 2}},
+    "folk_step": {"kick": {"pitch_hz": (45, 75), "decay_ms": (180, 400), "click_hz": (150, 700), "dirt": (0, 0.3)},
+                  "kit": {"snare_decay_ms": (100, 400), "snare_dirt": (0, 0.3), "hand": 1}},
+}
+# How far outside a range counts as one full miss.
+_SOUND_SCALES = {"pitch_hz": 15.0, "decay_ms": 150.0, "click_hz": 250.0, "dirt": 0.3,
+                 "snare_decay_ms": 120.0, "hat_decay_ms": 80.0, "snare_dirt": 0.3}
+SOUND_FIT_MAX = 16.0
+
+# Audio features by lowercase file name ("kick 909 1.aif", "909 core kit.adg"); the server
+# loads them from the sound_analysis cache with set_sound_features().
+SOUND_FEATURES: dict[str, dict] = {}
+
+
+def set_sound_features(features: dict[str, dict] | None) -> None:
+    SOUND_FEATURES.clear()
+    SOUND_FEATURES.update(features or {})
+
+
 CANDIDATES_PER_ROLE = 30
-DEFAULT_KIT_NAMES = ("909 Core Kit.adg", "808 Core Kit.adg")
+# Fallbacks when every ranked pick fails: DS Kick for the kick, a Core Kit for the perc.
+DEFAULT_KIT_NAMES = ("DS Kick", "909 Core Kit.adg", "808 Core Kit.adg")
+
+
+def style_key(style: str) -> str | None:
+    s = (style or "").strip().lower().replace(" ", "_").replace("-", "_")
+    if s in STYLE_PROFILES:
+        return s
+    if "tekno" in s:
+        return "tekno"
+    if "hard" in s and "techno" in s:
+        return "hard_techno"
+    if "acid" in s:
+        return "acid_techno"
+    # Most specific name wins, so "happy_house" doesn't fall back to plain "house".
+    return next((key for key in sorted(STYLE_PROFILES, key=len, reverse=True) if key in s), None)
 
 
 def style_profile(style: str) -> dict:
-    s = (style or "").strip().lower().replace(" ", "_").replace("-", "_")
-    if s in STYLE_PROFILES:
-        return STYLE_PROFILES[s]
-    if "tekno" in s:
-        return STYLE_PROFILES["tekno"]
-    if "hard" in s and "techno" in s:
-        return STYLE_PROFILES["hard_techno"]
-    if "acid" in s:
-        return STYLE_PROFILES["acid_techno"]
-    # Most specific name wins, so "happy_house" doesn't fall back to plain "house".
-    for key in sorted(STYLE_PROFILES, key=len, reverse=True):
-        if key in s:
-            return STYLE_PROFILES[key]
-    return {"text": "", "+": {}, "-": []}
+    key = style_key(style)
+    if key is None:
+        return {"text": "", "+": {}, "-": []}
+    return {**STYLE_PROFILES[key], "sound": SOUND_TARGETS.get(key, {})}
+
+
+def sound_features(item: dict) -> dict | None:
+    return SOUND_FEATURES.get(str(item.get("name") or "").lower())
+
+
+def features_for_device(device_name: str) -> dict | None:
+    """Analysis for a device already on a track: Live names a Simpler after its sample and a
+    Drum Rack after its preset, both without the file extension."""
+    base = (device_name or "").strip().lower()
+    return next((SOUND_FEATURES[base + ext] for ext in ("", ".wav", ".aif", ".aiff", ".adg") if base + ext in SOUND_FEATURES), None)
+
+
+def _misses(values: dict, target: dict) -> float:
+    total = 0.0
+    for k, rng in target.items():
+        v = values.get(k)
+        if not isinstance(rng, tuple) or v is None:
+            continue
+        lo, hi = rng
+        dist = lo - v if v < lo else v - hi if v > hi else 0.0
+        total += min(2.0, dist / _SOUND_SCALES[k])
+    return total
+
+
+def sound_fit(item: dict, role: str, profile: dict) -> float | None:
+    """How well a kick or kit *sounds* like the style: up to SOUND_FIT_MAX, negative for a poor fit,
+    None when the sound wasn't analysed (synth presets, compressed Pack samples) or the style has no target."""
+    feat = sound_features(item)
+    targets = profile.get("sound") or {}
+    if not feat:
+        return None
+    if role == "drums" and "kick" in targets and feat.get("pitch_hz"):
+        return max(-12.0, SOUND_FIT_MAX - 7 * _misses(feat, targets["kick"]))
+    if role == "perc" and feat.get("kit") and "kit" in targets:
+        t, lanes = targets["kit"], set(feat.get("lanes") or [])
+        ranged = [k for k, v in t.items() if isinstance(v, tuple)]
+        measured = sum(1 for k in ranged if feat.get(k) is not None) / len(ranged) if ranged else 1.0
+        # Kits built from Pack samples often can't be measured: only what was heard earns the full score.
+        s = SOUND_FIT_MAX * (0.4 + 0.6 * measured) - 6 * _misses(feat, t)
+        # Perc carries every drum but the kick, so a kit missing hats or a backbeat sound can't play the groove.
+        if "hat" not in lanes:
+            s -= 10
+        if not lanes & {"snare", "clap"}:
+            s -= 10
+        for lane in ("clap", "snare"):
+            if t.get(lane) and lane not in lanes:
+                s -= 5
+        if t.get("hand"):
+            s += 4 * min(feat.get("hand_drums") or 0, 3) - (6 if (feat.get("hand_drums") or 0) < t["hand"] else 0)
+        return max(-12.0, min(SOUND_FIT_MAX + 6, s))
+    return None
+
+
+def describe_sound(item: dict) -> str | None:
+    """Short plain-language description of an analysed kick or kit, for the AI and the picker."""
+    f = sound_features(item)
+    if not f:
+        return None
+    if f.get("kit"):
+        bits = [f"{f.get('pads')} pads"]
+        if f.get("snare_decay_ms") is not None:
+            bits.append(f"snare/clap {int(f['snare_decay_ms'])} ms")
+        if f.get("hat_decay_ms") is not None:
+            bits.append(f"hats {int(f['hat_decay_ms'])} ms")
+        if f.get("snare_dirt") is not None:
+            bits.append("gritty" if f["snare_dirt"] >= 0.4 else "clean")
+        if f.get("hand_drums"):
+            bits.append(f"{f['hand_drums']} hand drums")
+        missing = [l for l in ("hat", "snare", "clap") if l not in (f.get("lanes") or [])]
+        if missing:
+            bits.append("no " + "/".join(missing))
+        words = str(f.get("words") or "")
+        return ", ".join(bits) + (f"; samples: {words[:90]}" if words else "")
+    if not f.get("pitch_hz"):
+        return None
+    d = f.get("dirt") or 0
+    tone = "distorted" if d >= 0.6 else "saturated" if d >= 0.3 else "clean"
+    click = "hard click" if f["click_hz"] >= 600 else "punchy" if f["click_hz"] >= 250 else "soft attack"
+    drop = ", pitch drop" if (f.get("attack_hz") or 0) > 2 * f["pitch_hz"] else ""
+    return f"{int(f['pitch_hz'])} Hz body, {int(f['decay_ms'])} ms, {click}, {tone}{drop}"
 
 
 def display_name(item: dict) -> str:
@@ -186,6 +332,8 @@ def role_pool(items: list[dict], role: str) -> list[dict]:
             continue
         if spec.get("ext") and not name.lower().endswith(spec["ext"]):
             continue
+        if spec.get("name_re") and not re.search(spec["name_re"], name, re.I):
+            continue
         key = (path, name.lower())
         if key in seen:
             continue
@@ -206,11 +354,21 @@ def _score(item: dict, role: str, profile: dict, prompt_words: list[str]) -> flo
     s += 4 * sum(1 for w in plus.get("*", []) if w in text)
     s -= 10 * sum(1 for w in profile.get("-", []) if w in text)
     s += 12 * sum(1 for w in prompt_words if w in text)  # the producer's own words beat style defaults
-    if role == "drums" and "core kit" in text:
+    if role == "perc" and "core kit" in text:
         s += 2  # dependable, well-mapped kits
+    if role == "drums" and display_name(item) == "DS Kick":
+        s += 12  # the go-to kick: tunable and punchy, so it always reaches the shortlist
     if "mpe" in text:
         s -= 8  # MPE presets sound flat when played from plain MIDI clips
-    return s
+    feat = sound_features(item)
+    if feat and feat.get("kit"):
+        # Kit names rarely say much ("Abyss Kit"); the samples on its pads do ("Kick 909", "Conga Hi").
+        pads = str(feat.get("words") or "").lower()
+        s += 3 * sum(1 for w in plus.get(role, []) + plus.get("drums", []) + plus.get("*", []) if w in pads and w not in text)
+        s -= 4 * sum(1 for w in profile.get("-", []) if w in pads and w not in text)
+        s += 4 * sum(1 for w in prompt_words if w in pads and w not in text)
+    fit = sound_fit(item, role, profile)
+    return s + (fit or 0.0)
 
 
 def rank_candidates(pool: list[dict], role: str, style: str, prompt: str | None = None, *,
@@ -276,11 +434,16 @@ def group_candidates(pool: list[dict], role: str, style: str, prompt: str | None
         if q and q not in f"{it.get('name', '')} {it.get('path', '')}".lower():
             continue
         m = _matched_words(it, role, profile, words)
-        key = "clash" if m["clash"] else "prompt" if m["prompt"] else "style" if m["style"] else "role" if m["role"] else "other"
+        fit = sound_fit(it, role, profile)
+        # A sound whose audio matches the style counts as a style match even when its name says nothing.
+        sounds_right = fit is not None and fit >= SOUND_FIT_MAX - 4
+        key = ("clash" if m["clash"] else "prompt" if m["prompt"] else "style" if m["style"] or sounds_right
+               else "role" if m["role"] else "other")
         row = {
             "name": display_name(it), "file": it.get("name"), "folder": it.get("path"), "uri": it.get("uri"),
-            "tags": list(dict.fromkeys(m["prompt"] + m["style"] + m["role"])),
+            "tags": list(dict.fromkeys(m["prompt"] + m["style"] + (["sounds right"] if sounds_right else []) + m["role"])),
             "clash": m["clash"],
+            "sound": describe_sound(it),
         }
         buckets[key].append((_score(it, role, profile, words), row))
     role_label = role if role != "fx" else "FX"
@@ -315,7 +478,10 @@ AI_SYSTEM = (
     "You are an expert electronic music producer choosing a coherent sound palette in Ableton Live. "
     "For each role pick EXACTLY ONE candidate id from that role's list. The sounds must work together "
     "as one track: complementary frequency ranges, one clear character, nothing that clashes with the style. "
-    "The perc kit must differ from the main drum kit, and the pad from the chords sound. Return STRICT JSON only: "
+    "The drums role is a single kick sound; the perc kit plays every other drum (snare, clap, hats, percussion). "
+    "The pad must differ from the chords sound. A candidate's 'sound' field is measured from its audio "
+    "(body pitch, length, attack, distortion; a kit's snare/hat lengths and pad samples): trust it over the name. "
+    "Return STRICT JSON only: "
     '{"choices": {"<role>": {"id": <number>, "reason": "<one short sentence>"}}}'
 )
 
@@ -332,7 +498,10 @@ async def ai_palette(
         rows = []
         for n, it in enumerate(cands, 1):
             by_id[role][n] = it
-            rows.append({"id": n, "name": display_name(it), "folder": it.get("path")})
+            row = {"id": n, "name": display_name(it), "folder": it.get("path")}
+            if describe_sound(it):
+                row["sound"] = describe_sound(it)
+            rows.append(row)
         lists[role] = {"role": ROLE_POOLS[role]["label"], "candidates": rows}
 
     profile = style_profile(style)
@@ -364,7 +533,8 @@ AI_TOP_PICKS_SYSTEM = (
     "You are an expert electronic music producer choosing a sound for one track in Ableton Live. "
     "Pick the 3 best candidates for this role and style, best first. They must sit well with the "
     "instruments already on the other tracks: complementary frequency range and one shared character. "
-    "Pick 3 different-sounding options so the producer has a real choice. Return STRICT JSON only: "
+    "Pick 3 different-sounding options so the producer has a real choice. A candidate's 'sound' field is "
+    "measured from its audio: trust it over the name. Return STRICT JSON only: "
     '{"picks": [{"id": <number>, "reason": "<one short sentence>"}]}'
 )
 AI_TOP_PICKS_CANDIDATES = 40
@@ -390,7 +560,7 @@ async def ai_top_picks(
         f"Currently on this track: {current or 'nothing'}\n"
         f"Other tracks: {json.dumps(others or {})}\n"
         f"Producer's notes: {prompt or 'none'}\n\n"
-        f"Candidates: {json.dumps([{'id': n, 'name': r['name'], 'folder': r['folder']} for n, r in table.items()])}"
+        f"Candidates: {json.dumps([{'id': n, 'name': r['name'], 'folder': r['folder'], **({'sound': r['sound']} if r.get('sound') else {})} for n, r in table.items()])}"
     )
     obj, meta = await call_ai(AI_TOP_PICKS_SYSTEM, user, float(temperature))
     if not meta.get("ok") or not isinstance(obj, dict) or not isinstance(obj.get("picks"), list):
