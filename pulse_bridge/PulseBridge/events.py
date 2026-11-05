@@ -7,6 +7,7 @@ Events (name -> data):
   song.tracks       {"num_tracks", "track_names"}
   song.scenes       {"num_scenes"}
   song.key          {"root_note", "scale_name"}              (Live 12+)
+  song.tempo_follower {"tempo_follower_enabled"}            (Live 11+)
   track.name        {"track_index", "name"}
   track.devices     {"track_index", "num_devices", "devices"}
   track.playing     {"track_index", "playing_slot_index", "fired_slot_index"}
@@ -57,6 +58,9 @@ class EventHub(object):
         s = self._song
         self._listen(s, "tempo", lambda: self._emit("song.tempo", {"tempo": s.tempo}))
         self._listen(s, "is_playing", self._on_is_playing)
+        if hasattr(s, "tempo_follower_enabled"):
+            self._listen(s, "tempo_follower_enabled", lambda: self._emit(
+                "song.tempo_follower", {"tempo_follower_enabled": bool(s.tempo_follower_enabled)}))
         self._listen(s, "tracks", self._on_tracks)
         self._listen(s, "scenes", lambda: self._emit("song.scenes", {"num_scenes": len(s.scenes)}))
         if hasattr(s, "root_note"):

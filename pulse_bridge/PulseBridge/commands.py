@@ -16,7 +16,7 @@ try:
 except ImportError:  # unit tests
     Live = None
 
-BRIDGE_VERSION = "0.3.1"
+BRIDGE_VERSION = "0.3.2"
 PROTOCOL_VERSION = 1
 
 BROWSER_ROOTS = (
@@ -42,6 +42,7 @@ SUITE_ONLY_INSTRUMENTS = ("Operator", "Sampler", "Analog", "Collision", "Electri
 STANDARD_UP_INSTRUMENTS = ("Wavetable",)
 URI_SEARCH_BUDGET = 20000
 DEVICE_TYPES = {1: "instrument", 2: "audio_effect", 4: "midi_effect"}  # Live.Device.DeviceType
+MONITORING_STATES = {"in": 0, "auto": 1, "off": 2}  # Track.current_monitoring_state
 
 
 class CommandError(Exception):
@@ -144,6 +145,7 @@ class Commands(object):
             "get_song": self.get_song,
             "get_snapshot": self.get_snapshot,
             "set_tempo": self.set_tempo,
+            "set_tempo_follower": self.set_tempo_follower,
             "play": self.play,
             "stop": self.stop,
             "stop_all_clips": self.stop_all_clips,
@@ -155,6 +157,8 @@ class Commands(object):
             "set_send": self.set_send,
             "get_track": self.get_track,
             "set_track": self.set_track,
+            "get_track_input": self.get_track_input,
+            "set_track_input": self.set_track_input,
             "create_scene": self.create_scene,
             "set_scene_name": self.set_scene_name,
             "fire_scene": self.fire_scene,
@@ -275,6 +279,7 @@ class Commands(object):
             "song_key": hasattr(song, "root_note") and hasattr(song, "scale_name"),
             "undo_steps": hasattr(song, "begin_undo_step"),
             "groove_pool": hasattr(song, "groove_pool"),
+            "tempo_follower": hasattr(song, "tempo_follower_enabled"),
         }
 
         names = {}
@@ -322,6 +327,8 @@ class Commands(object):
             out["root_note"] = s.root_note
             out["scale_name"] = getattr(s, "scale_name", None)
             out["scale_mode"] = bool(getattr(s, "scale_mode", False))
+        if hasattr(s, "tempo_follower_enabled"):
+            out["tempo_follower_enabled"] = bool(s.tempo_follower_enabled)
         return out
 
     def get_snapshot(self, params):
@@ -345,6 +352,15 @@ class Commands(object):
     def set_tempo(self, params):
         self.song.tempo = _clamp(_float(params, "tempo"), 20.0, 999.0)
         return {"tempo": self.song.tempo}
+
+    def set_tempo_follower(self, params):
+        """Live's Follow switch. It only takes effect once the Tempo Follower toggle is shown
+        (Preferences > Link, Tempo & MIDI), where its input channel is also picked."""
+        s = self.song
+        if not hasattr(s, "tempo_follower_enabled"):
+            raise CommandError("tempo_follower_unavailable")
+        s.tempo_follower_enabled = bool(params.get("enabled", True))
+        return {"tempo_follower_enabled": bool(s.tempo_follower_enabled), "tempo": s.tempo}
 
     def play(self, params):
         self.song.start_playing()
@@ -464,6 +480,62 @@ class Commands(object):
                     continue
                 setattr(t, flag, bool(params[flag]))
         return {"index": ti, "name": t.name}
+
+    @staticmethod
+    def _pick_routing(options, wanted):
+        """The routing whose display name is wanted: exact match first, then ignoring case and
+        spaces/dots ("Ext. In" == "ext in"), then a name that starts with it."""
+        def norm(x):
+            return re.sub(r"[\s.]", "", x).lower()
+        options = list(options)
+        for test in (lambda n: n == wanted,
+                     lambda n: norm(n) == norm(wanted),
+                     lambda n: norm(n).startswith(norm(wanted))):
+            for o in options:
+                if test(o.display_name):
+                    return o
+        return None
+
+    def get_track_input(self, params):
+        ti, t = self._track(params)
+        if not hasattr(t, "input_routing_type"):
+            raise CommandError("input_routing_unavailable")
+        out = {
+            "index": ti,
+            "routing_type": t.input_routing_type.display_name,
+            "routing_channel": t.input_routing_channel.display_name,
+            "available_types": [o.display_name for o in t.available_input_routing_types],
+            "available_channels": [o.display_name for o in t.available_input_routing_channels],
+        }
+        state = getattr(t, "current_monitoring_state", None)
+        if state is not None:
+            out["monitoring"] = next((k for k, v in MONITORING_STATES.items() if v == int(state)), None)
+        return out
+
+    def set_track_input(self, params):
+        """Route a track's input by display name, e.g. routing_type "Ext. In", routing_channel
+        "29/30", and optionally set monitoring ("in", "auto", "off")."""
+        ti, t = self._track(params)
+        if not hasattr(t, "input_routing_type"):
+            raise CommandError("input_routing_unavailable")
+        if params.get("routing_type"):
+            o = self._pick_routing(t.available_input_routing_types, str(params["routing_type"]))
+            if o is None:
+                raise CommandError("routing_type_not_found: %s (have: %s)" % (
+                    params["routing_type"], ", ".join(x.display_name for x in t.available_input_routing_types)))
+            t.input_routing_type = o
+        if params.get("routing_channel"):
+            o = self._pick_routing(t.available_input_routing_channels, str(params["routing_channel"]))
+            if o is None:
+                raise CommandError("routing_channel_not_found: %s (have: %s)" % (
+                    params["routing_channel"], ", ".join(x.display_name for x in t.available_input_routing_channels)))
+            t.input_routing_channel = o
+        mon = params.get("monitoring")
+        if mon is not None and hasattr(t, "current_monitoring_state"):
+            if str(mon).lower() not in MONITORING_STATES:
+                raise CommandError("bad_monitoring: %s" % mon)
+            t.current_monitoring_state = MONITORING_STATES[str(mon).lower()]
+        return self.get_track_input({"track_index": ti})
 
     # ------------------------------------------------------------------ scenes
 
