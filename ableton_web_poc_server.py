@@ -3575,6 +3575,68 @@ def set_tempo(req: TempoRequest):
     return {"ok": True, "bpm": req.bpm}
 
 
+class FollowRequest(BaseModel):
+    enabled: bool = True
+
+
+class FollowInputRequest(BaseModel):
+    channel: str = "29/30"
+    routing_type: str = "Ext. In"
+    monitoring: str = "auto"  # "in" plays the input through Live too; "auto" only when armed
+
+
+def _follow_input_name(channel: str) -> str:
+    return f"Ext In {channel}"
+
+
+@app.get("/transport/follow")
+async def tempo_follow_status():
+    """Whether Live's Tempo Follower exists here and is on (bridge 0.3.2+)."""
+    try:
+        song = await _bridge_call("get_song", timeout_s=3.0)
+    except BridgeError as e:
+        return {"ok": False, "error": str(e)}
+    available = "tempo_follower_enabled" in (song or {})
+    return {"ok": True, "available": available, "enabled": bool(song.get("tempo_follower_enabled")),
+            "tempo": song.get("tempo"), "bridge_outdated": not available and not _bridge_at_least("0.3.2")}
+
+
+@app.post("/transport/follow")
+async def tempo_follow(req: FollowRequest):
+    """Turn Live's Follow switch on or off. Live listens to the input picked in
+    Preferences > Link, Tempo & MIDI > Tempo Follower; that toggle must be shown there."""
+    try:
+        return {"ok": True, **(await _bridge_call("set_tempo_follower", {"enabled": req.enabled}))}
+    except BridgeError as e:
+        msg = str(e)
+        if msg.startswith("unknown_command"):
+            msg = "PulseBridge in Live is older than 0.3.2: reinstall it and restart Live."
+        return {"ok": False, "error": msg}
+
+
+@app.post("/live/follow_input")
+async def follow_input_track(req: FollowInputRequest):
+    """An audio track listening to the external input Tempo Follower follows, so its level shows
+    in Pulse and it can be recorded. Reuses the track if it already exists."""
+    name = _follow_input_name(req.channel)
+    try:
+        song = await _bridge_call("get_song", timeout_s=3.0)
+        names = song.get("track_names") or []
+        if name in names:
+            index, created = names.index(name), False
+        else:
+            index = (await _bridge_call("create_audio_track", {"index": -1}))["index"]
+            await _bridge_call("set_track", {"track_index": index, "name": name})
+            created = True
+        routed = await _bridge_call("set_track_input", {
+            "track_index": index, "routing_type": req.routing_type,
+            "routing_channel": req.channel, "monitoring": req.monitoring,
+        })
+    except BridgeError as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "track_index": index, "name": name, "created": created, **routed}
+
+
 @app.get("/transport/status")
 def transport_status():
     # Best-effort queries; values depend on what AbletonOSC exposes.

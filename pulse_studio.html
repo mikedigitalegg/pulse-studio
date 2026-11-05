@@ -1171,6 +1171,8 @@
           </div>
           <div class="perf-deck-actions">
             <button id="perfAuto" class="secondary perf-auto" title="Play the arrangement from Compose, scene by scene">Autopilot</button>
+            <button id="perfFollow" class="secondary perf-auto" style="display: none;" title="Live's Tempo Follower: Live sets its tempo from the audio on the input chosen in Preferences > Link, Tempo &amp; MIDI (pick Ext. In 29/30 there, and show the Tempo Follower toggle)">Follow</button>
+            <button id="perfFollowInput" class="secondary" style="display: none;" title="Add an audio track listening to Ext. In 29/30, so you can see its level here and record it. Monitoring is Auto, so it only plays through Live when armed.">+ Ext In 29/30</button>
             <button id="perfStopClips" class="secondary perf-panic" title="Stop every clip, in time. The transport keeps running.">Stop clips</button>
           </div>
           <div id="perfAutoStatus" class="perf-deck-status"></div>
@@ -4437,6 +4439,14 @@
         });
         const tempo = $("perfTempo");
         if (tempo) tempo.textContent = song ? String(Math.round(song.tempo * 10) / 10) : "–";
+        const follow = $("perfFollow");
+        const canFollow = !!song && "tempo_follower_enabled" in song;
+        if (follow) {
+          follow.style.display = canFollow ? "" : "none";
+          follow.classList.toggle("on", canFollow && !!song.tempo_follower_enabled);
+        }
+        const followInput = $("perfFollowInput");
+        if (followInput) followInput.style.display = canFollow && !(tracks || []).some((t) => t.name === PERF_FOLLOW_INPUT) ? "" : "none";
 
         const st = perfSceneState(tracks);
         const autoNext = perfAutoNextScene();
@@ -4547,6 +4557,33 @@
         }
       }
 
+      const PERF_FOLLOW_INPUT = "Ext In 29/30";
+
+      async function perfToggleFollow() {
+        const L = perfLive();
+        if (!L || !L.song) return;
+        const enabled = !L.song.tempo_follower_enabled;
+        try {
+          const r = await post("/transport/follow", { enabled });
+          if (!r.ok) throw new Error(r.error || "Live refused");
+          L.song.tempo_follower_enabled = !!r.tempo_follower_enabled;
+          if (enabled && !r.tempo_follower_enabled) log("Follow didn't switch on: show the Tempo Follower toggle in Live's Preferences > Link, Tempo & MIDI and pick Ext. In 29/30 as its input.");
+          renderPerform();
+        } catch (e) {
+          log("Follow failed: " + e.message);
+        }
+      }
+
+      async function perfAddFollowInput() {
+        try {
+          const r = await post("/live/follow_input", { channel: "29/30" });
+          if (!r.ok) throw new Error(r.error || "Live refused");
+          log(`${r.name}: track ${r.track_index + 1} now listens to ${r.routing_type} ${r.routing_channel}.`);
+        } catch (e) {
+          log("Couldn't add the Ext In track: " + e.message);
+        }
+      }
+
       async function perfNudgeTempo(delta) {
         const L = perfLive();
         const now = L && L.song ? Number(L.song.tempo) : parseFloat(document.getElementById("tempo")?.value || "0");
@@ -4634,6 +4671,8 @@
       document.getElementById("perfPlay")?.addEventListener("click", perfTogglePlay);
       document.getElementById("perfTempoDown")?.addEventListener("click", () => perfNudgeTempo(-1));
       document.getElementById("perfTempoUp")?.addEventListener("click", () => perfNudgeTempo(1));
+      document.getElementById("perfFollow")?.addEventListener("click", perfToggleFollow);
+      document.getElementById("perfFollowInput")?.addEventListener("click", perfAddFollowInput);
       document.getElementById("perfStopClips")?.addEventListener("click", async () => {
         perfFlash(document.getElementById("perfStopClips"));
         if (perf.auto && perf.auto.running) await perfStopAuto("Clips stopped: autopilot off.");
@@ -6573,7 +6612,7 @@
         const EDITIONS = { suite: "Suite", standard: "Standard", intro_or_lite: "Intro / Lite", unknown: "Unknown edition" };
         const EVENTS = [
           "bridge.status", "bridge.connected", "bridge.disconnected",
-          "song.tempo", "song.is_playing", "song.tracks", "song.scenes", "song.key",
+          "song.tempo", "song.is_playing", "song.tracks", "song.scenes", "song.key", "song.tempo_follower",
           "track.name", "track.devices", "track.playing", "track.mute", "beat",
         ];
 
@@ -6644,6 +6683,7 @@
             case "song.tracks": refreshSnapshotSoon(); break;  // indices may have shifted
             case "song.scenes": if (s) s.num_scenes = data.num_scenes; refreshSnapshotSoon(); break;  // for the new scene names
             case "song.key": if (s) Object.assign(s, data); break;
+            case "song.tempo_follower": if (s) s.tempo_follower_enabled = !!data.tempo_follower_enabled; break;
             case "track.name":
             case "track.devices":
             case "track.mute":
